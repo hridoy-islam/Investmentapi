@@ -4,6 +4,8 @@ import { AuthRoutes } from "../modules/auth/auth.router";
 
 import { NotificationsRoutes } from "../modules/notification/notification.route";
 import { UploadDocumentRoutes } from "../modules/documents/documents.route";
+import { InvestmentRoutes } from "../modules/investment/investment.route";
+import { InvestmentParticipantRoutes } from "../modules/investmentParticipant/InvestmentParticipant.route";
 
 
 const router = Router();
@@ -25,6 +27,14 @@ const moduleRoutes = [
   {
     path: "/documents",
     route: UploadDocumentRoutes,
+  },
+  {
+    path: "/investments",
+    route: InvestmentRoutes,
+  },
+  {
+    path: "/investment-participants",
+    route: InvestmentParticipantRoutes,
   },
  
  
