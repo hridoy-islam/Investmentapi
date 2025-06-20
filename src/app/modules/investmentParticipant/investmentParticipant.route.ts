@@ -2,7 +2,7 @@
 import express from "express";
 import auth from "../../middlewares/auth";
 import { upload } from "../../utils/multer";
-import { InvestmentParticipantControllers } from "./InvestmentParticipant.controller";
+import { InvestmentParticipantControllers } from "./investmentParticipant.controller";
 // import auth from '../../middlewares/auth';
 
 const router = express.Router();
@@ -15,6 +15,10 @@ router.post(
   "/",
   auth("admin", "agent", "investor"),
   InvestmentParticipantControllers.InvestmentParticipantCreate
+);
+router.post(
+  "/monthlyProfitGeneration",
+  InvestmentParticipantControllers.MonthlyProfitGeneration
 );
 router.get(
   "/:id",

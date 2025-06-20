@@ -14,6 +14,16 @@ const InvestmentParticipantCreate = catchAsync(async (req, res) => {
   });
 });
 
+const MonthlyProfitGeneration  = catchAsync(async (req, res) => {
+  const result = await InvestmentParticipantServices.runMonthlyProfitGeneration();
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "InvestmentParticipant created successfully",
+    data: result,
+  });
+});
+
 const getAllInvestmentParticipant: RequestHandler = catchAsync(async (req, res) => {
   const result = await InvestmentParticipantServices.getAllInvestmentParticipantFromDB(req.query);
   sendResponse(res, {
@@ -50,4 +60,5 @@ export const InvestmentParticipantControllers = {
   getSingleInvestmentParticipant,
   updateInvestmentParticipant,
   InvestmentParticipantCreate,
+  MonthlyProfitGeneration
 };

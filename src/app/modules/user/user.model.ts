@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 import bcrypt from "bcrypt";
-import { Schema, model } from "mongoose";
+import mongoose, { Schema, model } from "mongoose";
 import config from "../../config";
 import { UserStatus } from "./user.constant";
 import { TUser, UserModel } from "./user.interface";
@@ -33,6 +33,11 @@ const userSchema = new Schema<TUser, UserModel>(
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+    agent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
     },
     authorized: {
       type: Boolean,
@@ -109,6 +114,9 @@ const userSchema = new Schema<TUser, UserModel>(
       select: false,
     },
 
+    passport: { type: [String], default: [] },
+    proofOfAddress: { type: [String], default: [] },
+    photoId: { type: [String], default: [] },
   },
   {
     timestamps: true,

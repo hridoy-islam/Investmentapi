@@ -6,6 +6,7 @@ import { NotificationsRoutes } from "../modules/notification/notification.route"
 import { UploadDocumentRoutes } from "../modules/documents/documents.route";
 import { InvestmentRoutes } from "../modules/investment/investment.route";
 import { InvestmentParticipantRoutes } from "../modules/investmentParticipant/InvestmentParticipant.route";
+import { BankRoutes } from "../modules/bank/bank.route";
 
 
 const router = Router();
@@ -35,6 +36,9 @@ const moduleRoutes = [
   {
     path: "/investment-participants",
     route: InvestmentParticipantRoutes,
+  }, {
+    path: "/banks",
+    route: BankRoutes,
   },
  
  

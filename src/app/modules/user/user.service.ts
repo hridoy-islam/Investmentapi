@@ -10,7 +10,7 @@ import bcrypt from "bcrypt";
 
 
 const getAllUserFromDB = async (query: Record<string, unknown>) => {
-  const userQuery = new QueryBuilder(User.find(), query)
+  const userQuery = new QueryBuilder(User.find().populate("agent","name"), query)
     .search(UserSearchableFields)
     .filter()
     .sort()
