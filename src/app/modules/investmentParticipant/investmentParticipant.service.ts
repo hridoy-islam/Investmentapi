@@ -116,97 +116,20 @@ const getSingleInvestmentParticipantFromDB = async (id: string) => {
 
 const updateInvestmentParticipantIntoDB = async (
   id: string,
-  payload: Partial<TInvestmentParticipant>
-) => {
-  const investmentParticipant = await InvestmentParticipant.findById(id);
-
-  if (!investmentParticipant) {
-    throw new AppError(httpStatus.NOT_FOUND, "InvestmentParticipant not found");
-  }
-
-  let totalPaid = 0;
-  let totalDue = 0;
-
-  // Loop through all monthly profits to update payment logs
-  investmentParticipant.monthlyProfits = investmentParticipant.monthlyProfits.map(
-    (existing) => {
-      const updatedProfit = payload.monthlyProfits?.find(
-        (p) => p._id?.toString() === existing._id.toString()
-      );
-
-      if (updatedProfit) {
-        const paymentLogs = existing.paymentLog || [];
-
-        const lastPaymentLog = paymentLogs[paymentLogs.length - 1];
-        const initialDue = lastPaymentLog ? lastPaymentLog.dueAmount : existing.profit;
-
-        const newPaidAmount = parseFloat(updatedProfit.paidAmount?.toString() || '0');
-
-        if (newPaidAmount > initialDue) {
-          throw new AppError(
-            httpStatus.BAD_REQUEST,
-            "Paid amount cannot exceed the remaining due"
-          );
-        }
-
-        const updatedDueAmount = initialDue - newPaidAmount;
-
-        // Add the new payment log entry
-        paymentLogs.push({
-          dueAmount: updatedDueAmount,
-          paidAmount: newPaidAmount,
-          status: updatedDueAmount > 0 ? "partial" : "paid",
-           note: updatedProfit.note || ""
-        });
-
-        // Calculate total paid and due for this profit
-        const totalPaidForThis = paymentLogs.reduce(
-          (sum, log) => sum + log.paidAmount,
-          0
-        );
-        const totalDueForThis = existing.profit - totalPaidForThis;
-
-        // Accumulate global totals
-        totalPaid += totalPaidForThis;
-        totalDue += totalDueForThis;
-
-        return {
-          ...existing.toObject(),
-          paymentLog: paymentLogs,
-          status: updatedDueAmount > 0 ? "partial" : "paid"
-        };
-      } else {
-        // For existing profits that weren't updated
-        const totalPaidForThis = existing.paymentLog?.reduce(
-          (sum, log) => sum + log.paidAmount,
-          0
-        ) || 0;
-
-        const totalDueForThis = existing.profit - totalPaidForThis;
-
-        totalPaid += totalPaidForThis;
-        totalDue += totalDueForThis;
-
-        return existing.toObject();
-      }
+    payload: Partial<TInvestmentParticipant>
+  ) => {
+    const investmentParticipant = await InvestmentParticipant.findById(id);
+  
+    if (!investmentParticipant) {
+      throw new AppError(httpStatus.NOT_FOUND, "investment not found");
     }
-  );
-
-  // Update main participant fields (amount, rate, status)
-  if (payload.amount !== undefined)
-    investmentParticipant.amount = payload.amount;
-  if (payload.rate !== undefined)
-    investmentParticipant.rate = payload.rate;
-  if (payload.status !== undefined)
-    investmentParticipant.status = payload.status;
-
-  // Update total due and paid fields for the participant
-  investmentParticipant.totalPaid = totalPaid;
-  investmentParticipant.totalDue = totalDue;
-
-  // Save the updated participant
-  const result = await investmentParticipant.save();
-  return result;
+  
+   
+    const result = await InvestmentParticipant.findByIdAndUpdate(id, payload, {
+      new: true,
+      runValidators: true,
+    });
+  
 };
 
 

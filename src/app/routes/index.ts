@@ -5,8 +5,9 @@ import { AuthRoutes } from "../modules/auth/auth.router";
 import { NotificationsRoutes } from "../modules/notification/notification.route";
 import { UploadDocumentRoutes } from "../modules/documents/documents.route";
 import { InvestmentRoutes } from "../modules/investment/investment.route";
-import { InvestmentParticipantRoutes } from "../modules/investmentParticipant/InvestmentParticipant.route";
 import { BankRoutes } from "../modules/bank/bank.route";
+import { TransactionRoutes } from "../modules/transactions/transactions.route";
+import { InvestmentParticipantRoutes } from "../modules/investmentParticipant/investmentParticipant.route";
 
 
 const router = Router();
@@ -39,6 +40,10 @@ const moduleRoutes = [
   }, {
     path: "/banks",
     route: BankRoutes,
+  },
+   {
+    path: "/transactions",
+    route: TransactionRoutes,
   },
  
  
