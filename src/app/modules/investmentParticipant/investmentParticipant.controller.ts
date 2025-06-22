@@ -2,7 +2,7 @@ import { RequestHandler } from "express";
 import catchAsync from "../../utils/catchAsync";
 import sendResponse from "../../utils/sendResponse";
 import httpStatus from "http-status";
-import { InvestmentParticipantServices } from "./InvestmentParticipant.service";
+import { InvestmentParticipantServices } from "./investmentParticipant.service";
 
 const InvestmentParticipantCreate = catchAsync(async (req, res) => {
   const result = await InvestmentParticipantServices.createInvestmentParticipantIntoDB(req.body);
@@ -14,15 +14,7 @@ const InvestmentParticipantCreate = catchAsync(async (req, res) => {
   });
 });
 
-const MonthlyProfitGeneration  = catchAsync(async (req, res) => {
-  const result = await InvestmentParticipantServices.runMonthlyProfitGeneration();
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "InvestmentParticipant created successfully",
-    data: result,
-  });
-});
+
 
 const getAllInvestmentParticipant: RequestHandler = catchAsync(async (req, res) => {
   const result = await InvestmentParticipantServices.getAllInvestmentParticipantFromDB(req.query);
@@ -60,5 +52,4 @@ export const InvestmentParticipantControllers = {
   getSingleInvestmentParticipant,
   updateInvestmentParticipant,
   InvestmentParticipantCreate,
-  MonthlyProfitGeneration
 };

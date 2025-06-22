@@ -30,7 +30,7 @@ const createInvestmentIntoDB = async (payload: TInvestment) => {
 const getAllInvestmentFromDB = async (query: Record<string, unknown>) => {
   const InvestmentQuery = new QueryBuilder(Investment.find(), query)
     .search(InvestmentSearchableFields)
-    .filter()
+    .filter(query)
     .sort()
     .paginate()
     .fields();

@@ -54,8 +54,11 @@ export interface TUser {
   isCompleted: boolean;
   userAgentInfo: UserAgentInfo[];
 
-  agent: string;
+  agent: Types.ObjectId;
+  passport: String[];
+  proofOfAddress: String[];
 
+  photoId: String[];
   createdAt?: Date;
   updatedAt?: Date;
 }

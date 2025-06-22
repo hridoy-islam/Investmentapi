@@ -7,7 +7,7 @@ const router = express.Router();
 // Route to create a notification
 router.post(
   "/",
-  auth("admin", "director", "company", "creator", "user"),
+  auth("admin", "agent", "investor"),
   NotificationControllers.createNotification
 );
 
@@ -17,12 +17,12 @@ router.get("/:userId", NotificationControllers.getNotifications);
 // Route to mark a notification as read
 router.patch(
   "/:notificationId/read",
-  auth("admin", "director", "company", "creator", "user"),
+  auth("admin", "agent", "investor"),
   NotificationControllers.markAsRead
 );
 router.patch(
   "/readall",
-  auth("admin", "director", "company", "creator", "user"),
+  auth("admin", "agent", "investor"),
   NotificationControllers.markAllAsRead
 );
 

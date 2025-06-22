@@ -8,65 +8,6 @@ import { InvestmentParticipant } from "./investmentParticipant.model";
 import { InvestmentParticipantSearchableFields } from "./investmentParticipant.constant";
 
 
-export const runMonthlyProfitGeneration = async () => {
-  try {
-    const participants = await InvestmentParticipant.find({ status: "active" });
-
-    const currentDate = moment();
-    const currentMonth = currentDate.format("YYYY-MM");
-
-    for (const participant of participants) {
-      const existingRecord = participant.monthlyProfits.find(
-        (record) => record.month === currentMonth
-      );
-
-      if (!existingRecord) {
-        const monthlyProfit = (participant.amount * participant.rate) / 100;
-
-        const newRecord = {
-          month: currentMonth,
-          profit: monthlyProfit,
-          paymentLog: [
-            {
-              dueAmount: monthlyProfit,
-              paidAmount: 0,
-              status: "due"
-            }
-          ]
-        };
-
-        participant.monthlyProfits.push(newRecord);
-        participant.totalDue += monthlyProfit;
-      }
-
-      // Recalculate totalPaid and update status in each paymentLog entry
-      let totalPaid = 0;
-
-      participant.monthlyProfits.forEach((entry) => {
-        entry.paymentLog.forEach((log) => {
-          // Update status based on payment
-          if (log.paidAmount >= log.dueAmount) {
-            log.status = "paid";
-          } else if (log.paidAmount > 0) {
-            log.status = "partial";
-          } else {
-            log.status = "due";
-          }
-
-          totalPaid += log.paidAmount;
-        });
-      });
-
-      participant.totalPaid = totalPaid;
-
-      await participant.save();
-    }
-
-    console.log("Monthly profit update completed.");
-  } catch (error) {
-    console.error("Error in monthly profit generation:", error);
-  }
-};
 
 
 
@@ -75,7 +16,7 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
     const result = await InvestmentParticipant.create(payload);
     return result;
   } catch (error: any) {
-    console.error("Error in createInvestmentParticipantParticipantIntoDB:", error);
+    console.error("Error in create InvestmentParticipantParticipantIntoDB:", error);
 
     // Throw the original error or wrap it with additional context
     if (error instanceof AppError) {
@@ -95,7 +36,7 @@ const getAllInvestmentParticipantFromDB = async (query: Record<string, unknown>)
     query
   )
     .search(InvestmentParticipantSearchableFields)
-    .filter()
+    .filter(query)
     .sort()
     .paginate()
     .fields();
@@ -141,5 +82,5 @@ export const InvestmentParticipantServices = {
   getSingleInvestmentParticipantFromDB,
   updateInvestmentParticipantIntoDB,
   createInvestmentParticipantIntoDB,
-  runMonthlyProfitGeneration
+  
 };

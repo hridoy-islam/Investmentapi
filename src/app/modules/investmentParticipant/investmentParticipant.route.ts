@@ -16,10 +16,7 @@ router.post(
   auth("admin", "agent", "investor"),
   InvestmentParticipantControllers.InvestmentParticipantCreate
 );
-router.post(
-  "/monthlyProfitGeneration",
-  InvestmentParticipantControllers.MonthlyProfitGeneration
-);
+
 router.get(
   "/:id",
   auth("admin", "agent", "investor"),

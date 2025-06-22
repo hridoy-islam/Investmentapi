@@ -30,7 +30,7 @@ const createBankIntoDB = async (payload: TBank) => {
 const getAllBankFromDB = async (query: Record<string, unknown>) => {
   const BankQuery = new QueryBuilder(Bank.find(), query)
     .search(BankSearchableFields)
-    .filter()
+    .filter(query)
     .sort()
     .paginate()
     .fields();

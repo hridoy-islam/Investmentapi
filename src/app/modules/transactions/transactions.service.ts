@@ -11,7 +11,7 @@ import { InvestmentParticipant } from "../investmentParticipant/investmentPartic
 
 export const runMonthlyProfitGeneration = async () => {
   try {
-    const participants = await InvestmentParticipant.find({ status: "active" }).populate("investorId","name");;
+    const participants = await InvestmentParticipant.find({ status: "active" }).populate("investorId", "name").lean();
 
     const currentDate = moment();
     const currentMonth = currentDate.format("YYYY-MM");
@@ -48,7 +48,7 @@ export const runMonthlyProfitGeneration = async () => {
               dueAmount: monthlyProfit,
               paidAmount: 0,
               status: "due",
-              note: `Payment Initiated To ${investorId?.name} amount: ${monthlyProfit}`,
+              note: `Payment Initiated To ${(investorId && typeof investorId === 'object' && 'name' in investorId) ? (investorId as any).name : investorId} amount: ${monthlyProfit}`,
             },
           ],
         });
@@ -146,7 +146,7 @@ const getAllTransactionFromDB = async (query: Record<string, unknown>) => {
     query
   )
     .search(TransactionSearchableFields)
-    .filter()
+    .filter(query)
     .sort()
     .paginate()
     .fields();
@@ -180,7 +180,7 @@ const updateTransactionIntoDB = async (
   const lastLog = existingLogs[existingLogs.length - 1];
   const initialDue = lastLog ? lastLog.dueAmount : transaction.profit;
 
-  const newPaidAmount = parseFloat(payload.paidAmount?.toString() || '0');
+  const newPaidAmount = parseFloat( (payload as any).paidAmount?.toString() || '0');
 
   if (newPaidAmount > initialDue) {
     throw new AppError(
@@ -196,7 +196,7 @@ const updateTransactionIntoDB = async (
     dueAmount: updatedDueAmount,
     paidAmount: newPaidAmount,
     status: updatedDueAmount > 0 ? 'partial' : 'paid',
-    note: payload.note || ''
+    note: (payload as any).note || ''
   });
 
   // Recalculate totals
