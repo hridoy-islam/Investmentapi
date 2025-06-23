@@ -58,6 +58,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://watneycollegeform.netlify.app",
+      "https://investment.taskplanner.co.uk",
       
     ],
     credentials: true,
