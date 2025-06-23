@@ -48,7 +48,7 @@ export const runMonthlyProfitGeneration = async () => {
               dueAmount: monthlyProfit,
               paidAmount: 0,
               status: "due",
-              note: `Payment Initiated To ${(investorId && typeof investorId === 'object' && 'name' in investorId) ? (investorId as any).name : investorId} amount: ${monthlyProfit}`,
+              note: `amount: £${monthlyProfit}`,
             },
           ],
         });

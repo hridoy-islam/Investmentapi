@@ -58,6 +58,7 @@ app.use(
     origin: [
       "http://localhost:5173",
       "https://investment.taskplanner.co.uk",
+      "https://investmentsuite.netlify.app",
       
     ],
     credentials: true,
