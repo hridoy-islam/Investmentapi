@@ -16,10 +16,7 @@ router.post(
   auth("admin", "agent", "investor"),
   TransactionControllers.TransactionCreate
 );
-router.post(
-  "/monthlyProfitGeneration",
-  TransactionControllers.MonthlyProfitGeneration
-);
+
 router.get(
   "/:id",
   auth("admin", "agent", "investor"),

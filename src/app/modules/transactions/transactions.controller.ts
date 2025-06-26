@@ -14,15 +14,7 @@ const TransactionCreate = catchAsync(async (req, res) => {
   });
 });
 
-const MonthlyProfitGeneration  = catchAsync(async (req, res) => {
-  const result = await TransactionServices.runMonthlyProfitGeneration();
-  sendResponse(res, {
-    statusCode: httpStatus.OK,
-    success: true,
-    message: "Transaction created successfully",
-    data: result,
-  });
-});
+
 
 const getAllTransaction: RequestHandler = catchAsync(async (req, res) => {
   const result = await TransactionServices.getAllTransactionFromDB(req.query);
@@ -60,5 +52,5 @@ export const TransactionControllers = {
   getSingleTransaction,
   updateTransaction,
   TransactionCreate,
-  MonthlyProfitGeneration
+
 };

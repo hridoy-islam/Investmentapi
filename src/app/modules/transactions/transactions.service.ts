@@ -9,113 +9,6 @@ import { TransactionSearchableFields } from "./transcations.constant";
 import { InvestmentParticipant } from "../investmentParticipant/investmentParticipant.model";
 
 
-export const runMonthlyProfitGeneration = async () => {
-  try {
-    const participants = await InvestmentParticipant.find({ status: "active" }).populate("investorId", "name").lean();
-
-    const currentDate = moment();
-    const currentMonth = currentDate.format("YYYY-MM");
-
-    for (const participant of participants) {
-      const {
-        _id,
-        investorId,
-        investmentId,
-        amount,
-        rate
-      } = participant;
-
-      const monthlyProfit = (amount * rate) / 100;
-
-      const existingTransaction = await Transaction.findOne({
-        investorId,
-        investmentId,
-        month: currentMonth,
-      });
-
-      if (!existingTransaction) {
-        const newTransaction = new Transaction({
-          month: currentMonth,
-          profit: monthlyProfit,
-          status: "due",
-          monthlyTotalDue: monthlyProfit,
-          monthlyTotalPaid: 0,
-          investorId,
-          investmentId,
-          paymentLog: [
-            {
-              transactionType: "profitPayment",
-              dueAmount: monthlyProfit,
-              paidAmount: 0,
-              status: "due",
-              note: `amount: £${monthlyProfit}`,
-            },
-          ],
-        });
-
-        await newTransaction.save();
-
-        // Update InvestmentParticipant totalDue
-        await InvestmentParticipant.findByIdAndUpdate(_id, {
-          $inc: { totalDue: monthlyProfit },
-        });
-      } else {
-        // Use a different name to avoid conflict with destructured `totalPaid`
-        let transactionPaidSum = 0;
-
-        existingTransaction.paymentLog.forEach((log) => {
-          if (log.paidAmount >= log.dueAmount) {
-            log.status = "paid";
-          } else if (log.paidAmount > 0) {
-            log.status = "partial";
-          } else {
-            log.status = "due";
-          }
-
-          transactionPaidSum += log.paidAmount;
-        });
-
-        existingTransaction.monthlyTotalPaid = transactionPaidSum;
-        existingTransaction.status =
-          transactionPaidSum >= existingTransaction.monthlyTotalDue
-            ? "paid"
-            : transactionPaidSum > 0
-            ? "partial"
-            : "due";
-
-        await existingTransaction.save();
-
-        // Recalculate and update InvestmentParticipant totalPaid and totalDue
-        const totals = await Transaction.aggregate([
-          {
-            $match: {
-              investorId,
-              investmentId,
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalPaid: { $sum: "$monthlyTotalPaid" },
-              totalDue: { $sum: "$monthlyTotalDue" },
-            },
-          },
-        ]);
-
-        const { totalPaid: newTotalPaid = 0, totalDue: newTotalDue = 0 } = totals[0] || {};
-
-        await InvestmentParticipant.findByIdAndUpdate(_id, {
-          totalPaid: newTotalPaid,
-          totalDue: newTotalDue,
-        });
-      }
-    }
-
-    console.log("✅ Monthly profit generation completed.");
-  } catch (error) {
-    console.error("❌ Error in monthly profit generation:", error);
-  }
-};
 
 
 
@@ -254,5 +147,5 @@ export const TransactionServices = {
   getSingleTransactionFromDB,
   updateTransactionIntoDB,
   createTransactionIntoDB,
-  runMonthlyProfitGeneration
+
 };
