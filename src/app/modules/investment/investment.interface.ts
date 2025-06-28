@@ -7,5 +7,6 @@ export interface TInvestment {
   details: string;
   documents: any[];
   status: string;
-  amountRequired:Number
+  amountRequired:Number;
+  adminCost:Number
 }

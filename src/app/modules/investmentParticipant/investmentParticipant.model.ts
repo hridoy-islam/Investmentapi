@@ -16,6 +16,7 @@ const investmentParticipantSchema = new Schema(
       default: "active",
     },
     amountLastUpdatedAt: { type: Date, default: null },
+   
   },
   { timestamps: true }
 );

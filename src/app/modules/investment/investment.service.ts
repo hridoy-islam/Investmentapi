@@ -9,7 +9,10 @@ import { InvestmentSearchableFields } from "./investment.constant";
 import { Transaction } from "../transactions/transactions.model";
 import { InvestmentParticipant } from "../investmentParticipant/investmentParticipant.model";
 import moment from "moment";
-
+import { User } from "../user/user.model";
+import mongoose from "mongoose";
+import { AgentCommission } from "../agent-commission/agent-commission.model";
+import { AgentTransaction } from "../agent-transactions/agent-transactions.model";
 
 const createInvestmentIntoDB = async (payload: TInvestment) => {
   try {
@@ -55,177 +58,362 @@ const getSingleInvestmentFromDB = async (id: string) => {
 type TUpdateInvestmentPayload = Partial<TInvestment> & {
   saleAmount?: number;
   adminCostRate?: number;
+  saleOperationId?: string;
 };
 
-
-
-
-const updateInvestmentIntoDB = async (
+export const updateInvestmentIntoDB = async (
   id: string,
   payload: TUpdateInvestmentPayload
 ) => {
-  // 1. Fetch the investment
-  const investment = await Investment.findById(id);
-  if (!investment) {
-    throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
-  }
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  const updates: Partial<TInvestment> = {};
-  let logMessage = "";
-  let updatedAmountRequired: number | undefined;
+  try {
+    const investment = await Investment.findById(id).session(session);
+    if (!investment) {
+      throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
+    }
 
-  // 2. Handle capital increase
-  if (payload.amountRequired) {
-    const previousAmount = investment.amountRequired;
-    updatedAmountRequired = Number(
-      (Number(previousAmount) + Number(payload.amountRequired)).toFixed(2)
-    );
-    updates.amountRequired = updatedAmountRequired;
+    if (payload?.saleAmount && isNaN(payload.saleAmount)) {
+      throw new AppError(httpStatus.BAD_REQUEST, "Invalid saleAmount");
+    }
 
-    logMessage = `Increased project capital from £${previousAmount} to £${updatedAmountRequired}`;
-  }
+    const updates: Partial<TInvestment> = {};
+    let logMessage = "";
+    let updatedAmountRequired: number | undefined;
 
-  // 3. Handle profit distribution if a saleAmount is provided
-  if (payload.saleAmount) {
-    const saleAmount = Number(Number(payload.saleAmount).toFixed(2));
-    const initialInvestment = Number(Number(investment.amountRequired).toFixed(2));
-    const grossProfit = Number((saleAmount - initialInvestment).toFixed(2));
-
-    const adminCostRate = payload.adminCostRate || 0;
-    const adminCost = Number((grossProfit * (adminCostRate / 100)).toFixed(2));
-    const netProfit = Number((grossProfit - adminCost).toFixed(2));
-
-    const currentMonth = moment().format("YYYY-MM");
-
-    const participants = await InvestmentParticipant.find({ investmentId: id });
-
-    const transactionPromises = participants.map(async (participant) => {
-      const rate = (100 * participant.amount) / initialInvestment;
-      const investorNetProfit = Number(((netProfit * rate) / 100).toFixed(2));
-
-      // Add profit to totalDue
-      participant.totalDue = Number(
-        (participant.totalDue + investorNetProfit).toFixed(2)
+    // Handle amountRequired update
+    if (payload.amountRequired) {
+      const previousAmount = investment.amountRequired;
+      updatedAmountRequired = Number(
+        (previousAmount + payload.amountRequired).toFixed(2)
       );
+      updates.amountRequired = updatedAmountRequired;
+      logMessage = `Investment Raised capital £${updatedAmountRequired}`;
+    }
 
-      // Track investment and last update month
-      const investmentMonth = moment(participant.createdAt).format("YYYY-MM");
-      const lastUpdateMonth = participant.amountLastUpdatedAt
-        ? moment(participant.amountLastUpdatedAt).format("YYYY-MM")
-        : null;
+    // Handle saleAmount and profit distribution
+    if (payload.saleAmount) {
+      const saleAmount = Number(payload.saleAmount.toFixed(2));
+      const initialInvestment = Number(investment.amountRequired.toFixed(2));
+      const grossProfit = Number((saleAmount - initialInvestment).toFixed(2));
 
-      const shouldUpdateAmount =
-        currentMonth !== investmentMonth && currentMonth !== lastUpdateMonth;
+      const adminCostRate = investment.adminCost || 0;
+      const adminCost = Number(
+        (grossProfit * (adminCostRate / 100)).toFixed(2)
+      );
+      const netProfit = Number((grossProfit - adminCost).toFixed(2));
 
-      if (shouldUpdateAmount) {
-        participant.amount = Number(participant.totalDue.toFixed(2));
-        participant.amountLastUpdatedAt = new Date();
-      }
+      const currentMonth = moment().format("YYYY-MM");
+      const saleOperationId = new mongoose.Types.ObjectId().toString();
 
-      const profitLog = {
-        type: "profitDistributed",
-        message: `Distributed profit for ${currentMonth}: ${rate.toFixed(
-          2
-        )}% of £${netProfit} = £${investorNetProfit}`,
-        metadata: {
-          netProfit,
-          investorNetProfit,
-          sharePercentage: rate,
-        },
-      };
-
-      let existingTransaction = await Transaction.findOne({
+      const participants = await InvestmentParticipant.find({
         investmentId: id,
-        investorId: participant.investorId,
-        month: currentMonth,
-      });
+        status: "active",
+      }).session(session);
 
-      if (existingTransaction) {
-        existingTransaction.logs.push(profitLog);
-        existingTransaction.profit = Number(
-          (existingTransaction.profit + investorNetProfit).toFixed(2)
-        );
-        existingTransaction.monthlyTotalDue = Number(
-          (existingTransaction.monthlyTotalDue + investorNetProfit).toFixed(2)
-        );
+      const now = new Date();
+      const globalLogs = [
+        {
+          type: "saleDeclared",
+          message: `CMV / SALE £${payload.saleAmount}`,
+          metadata: {
+            amount: payload.saleAmount,
+            refId: saleOperationId,
+          },
+          createdAt: new Date(now.getTime() + 1),
+        },
+        {
+          type: "saleDeclared",
+          message: `Profit for sale -- Gross Profit £${grossProfit}`,
+          metadata: {
+            amount: grossProfit,
+            saleAmount: payload.saleAmount,
+            refId: saleOperationId,
+          },
+          createdAt: new Date(now.getTime() + 2),
+        },
+        {
+          type: "adminCostDeclared",
+          message: `Admin Cost ${adminCostRate}% for ${investment.title} -- Net Profit £${adminCost}`,
+          metadata: {
+            investmentId: id,
+            adminCostRate,
+            amount: adminCost,
+            cmv: payload.saleAmount,
+            refId: saleOperationId,
+          },
+          createdAt: new Date(now.getTime() + 3),
+        },
+        {
+          type: "grossProfit",
+          message: `Net Profit Allocated for ${investment.title}: £${netProfit}`,
+          metadata: { amount: netProfit },
+          createdAt: new Date(now.getTime() + 4),
+        },
+      ];
+
+      let globalTransaction = await Transaction.findOne({
+        investmentId: id,
+        investorId: null,
+        month: currentMonth,
+      }).session(session);
+
+      if (globalTransaction) {
+        globalTransaction.logs.push(...globalLogs);
       } else {
-        existingTransaction = new Transaction({
+        globalTransaction = new Transaction({
+          investmentId: id,
+          investorId: null,
+          month: currentMonth,
+          profit: 0,
+          monthlyTotalDue: 0,
+          monthlyTotalPaid: 0,
+          monthlyTotalAgentDue: 0,
+          monthlyTotalAgentPaid: 0,
+          status: "due",
+          logs: globalLogs,
+        });
+      }
+      await globalTransaction.save({ session });
+
+      const participantUpdates = [];
+      const investorTxnPromises = [];
+      const agentTxnPromises = [];
+
+      for (const participant of participants) {
+        const investorSharePercent =
+          (100 * participant.amount) / initialInvestment;
+        const investorNetProfit = Number(
+          ((netProfit * investorSharePercent) / 100).toFixed(2)
+        );
+
+        participant.totalDue = Number(
+          (participant.totalDue + investorNetProfit).toFixed(2)
+        );
+
+        const investmentMonth = moment(participant.createdAt).format("YYYY-MM");
+        const lastUpdateMonth = participant.amountLastUpdatedAt
+          ? moment(participant.amountLastUpdatedAt).format("YYYY-MM")
+          : null;
+
+        const shouldUpdateAmount =
+          currentMonth !== investmentMonth && currentMonth !== lastUpdateMonth;
+        if (shouldUpdateAmount) {
+          participant.amount = Number(participant.totalDue.toFixed(2));
+          participant.amountLastUpdatedAt = new Date();
+        }
+        participantUpdates.push(participant.save({ session }));
+
+        const investor = await User.findById(participant.investorId)
+          .session(session)
+          .lean();
+        const investorName = investor?.name || "Investor";
+
+        const profitLog = {
+          type: "profitDistributed",
+          message: `Profit Distributed to ${investorName} from net profit £${netProfit} x ${investorSharePercent.toFixed(
+            2
+          )}% = £${investorNetProfit}`,
+          metadata: {
+            netProfit,
+            amount: investorNetProfit,
+            sharePercentage: investorSharePercent,
+            investorName,
+          },
+          createdAt: new Date(),
+        };
+
+        let investorTxn = await Transaction.findOne({
           investmentId: id,
           investorId: participant.investorId,
           month: currentMonth,
-          profit: investorNetProfit,
-          monthlyTotalDue: investorNetProfit,
-          monthlyTotalPaid: 0,
-          status: "due",
-          logs: [profitLog],
-        });
+        }).session(session);
+
+        if (!investorTxn) {
+          investorTxn = new Transaction({
+            investmentId: id,
+            investorId: participant.investorId,
+            month: currentMonth,
+            profit: investorNetProfit,
+            monthlyTotalDue: investorNetProfit,
+            monthlyTotalPaid: 0,
+            monthlyTotalAgentDue: 0,
+            monthlyTotalAgentPaid: 0,
+            status: "due",
+            logs: [profitLog],
+          });
+        } else {
+          investorTxn.logs.push(profitLog);
+          investorTxn.profit = Number(
+            (investorTxn.profit + investorNetProfit).toFixed(2)
+          );
+          investorTxn.monthlyTotalDue = Number(
+            (investorTxn.monthlyTotalDue + investorNetProfit).toFixed(2)
+          );
+        }
+        investorTxnPromises.push(investorTxn.save({ session }));
+
+        // ✅ Agent Commission Logic
+        if (investor?.agent && participant.agentCommissionRate > 0) {
+          const agent = await User.findById(investor.agent)
+            .session(session)
+            .lean();
+          if (agent) {
+            const agentCommissionRate = participant.agentCommissionRate;
+            const commissionBase =
+              grossProfit * (investorSharePercent / 100) - investorNetProfit;
+            const commission = Number(
+              (commissionBase * (agentCommissionRate / 100)).toFixed(2)
+            );
+
+            if (commission > 0) {
+              const commissionLog = {
+                type: "commissionCalculated",
+                message: `Commission distributed to agent ${agent.name} (${agentCommissionRate}%) for ${investorName}: £${commission}`,
+                metadata: {
+                  agentId: agent._id,
+                  agentName: agent.name,
+                  investorId: investor._id,
+                  investorName,
+                  amount: commission,
+                  investorSharePercent,
+                  investorNetProfit,
+                  refId: saleOperationId,
+                },
+                createdAt: new Date(),
+              };
+
+              let agentTxn = await AgentTransaction.findOne({
+                investmentId: id,
+                investorId: investor._id,
+                agentId: agent._id,
+                month: currentMonth,
+              }).session(session);
+
+              if (!agentTxn) {
+                agentTxn = new AgentTransaction({
+                  investmentId: id,
+                  investorId: investor._id,
+                  agentId: agent._id,
+                  month: currentMonth,
+                  commissionDue: commission,
+                  commissionPaid: 0,
+                  status: "due",
+                  logs: [commissionLog],
+                  paymentLog: [],
+                });
+              } else {
+                agentTxn.logs.push(commissionLog);
+                agentTxn.commissionDue = Number(
+                  (agentTxn.commissionDue + commission).toFixed(2)
+                );
+
+                if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
+                  agentTxn.status = "paid";
+                } else if (agentTxn.commissionPaid > 0) {
+                  agentTxn.status = "partial";
+                } else {
+                  agentTxn.status = "due";
+                }
+              }
+
+              agentTxnPromises.push(agentTxn.save({ session }));
+
+              let agentSummary = await AgentCommission.findOne({
+                agentId: agent._id,
+                investorId: investor._id,
+              }).session(session);
+
+              if (!agentSummary) {
+                agentSummary = new AgentCommission({
+                  agentId: agent._id,
+                  investorId: investor._id,
+                  totalCommissionDue: commission,
+                  totalCommissionPaid: 0,
+                });
+              } else {
+                agentSummary.totalCommissionDue = Number(
+                  (agentSummary.totalCommissionDue + commission).toFixed(2)
+                );
+              }
+
+              await agentSummary.save({ session });
+            }
+          }
+        }
       }
 
-      await existingTransaction.save();
-      await participant.save();
-    });
-
-    await Promise.all(transactionPromises);
-  }
-
-  // 4. Save any investment-level updates (e.g., updated amountRequired)
-  const updatedInvestment = await Investment.findByIdAndUpdate(id, updates, {
-    new: true,
-    runValidators: true,
-  });
-
-  if (!logMessage) return updatedInvestment;
-
-  const log = {
-    type: "investmentUpdated",
-    message: logMessage,
-    metadata: {
-      previousAmount: investment.amountRequired,
-      newAmount: updatedAmountRequired,
-    },
-  };
-
-  const currentMonth = moment().format("YYYY-MM");
-
-  const participants = await InvestmentParticipant.find({ investmentId: id });
-
-  const transactionLogPromises = participants.map(async (participant) => {
-    let existingTransaction = await Transaction.findOne({
-      investmentId: id,
-      investorId: participant.investorId,
-      month: currentMonth,
-    });
-
-    if (existingTransaction) {
-      existingTransaction.logs.push(log);
-      existingTransaction.profit ||= 0;
-      existingTransaction.monthlyTotalDue ||= 0;
-      existingTransaction.monthlyTotalPaid ||= 0;
-    } else {
-      existingTransaction = new Transaction({
-        investmentId: id,
-        investorId: participant.investorId,
-        month: currentMonth,
-        profit: 0,
-        monthlyTotalDue: 0,
-        monthlyTotalPaid: 0,
-        status: "due",
-        logs: [log],
-      });
+      await Promise.all([
+        ...participantUpdates,
+        ...investorTxnPromises,
+        ...agentTxnPromises,
+      ]);
     }
 
-    await existingTransaction.save();
-  });
+    if (logMessage) {
+      const currentMonth = moment().format("YYYY-MM");
+      const logEntry = {
+        type: "investmentUpdated",
+        message: logMessage,
+        metadata: { updatedAmountRequired },
+        createdAt: new Date(),
+      };
 
-  await Promise.all(transactionLogPromises);
+      let logTransaction = await Transaction.findOne({
+        investmentId: id,
+        investorId: null,
+        month: currentMonth,
+      }).session(session);
 
-  return updatedInvestment;
+      if (logTransaction) {
+        logTransaction.logs.push(logEntry);
+      } else {
+        logTransaction = new Transaction({
+          investmentId: id,
+          investorId: null,
+          month: currentMonth,
+          profit: 0,
+          monthlyTotalDue: 0,
+          monthlyTotalPaid: 0,
+
+          status: "due",
+          logs: [logEntry],
+        });
+      }
+      await logTransaction.save({ session });
+    }
+
+    const updatableFields = [
+      "status",
+      "saleAmount",
+      "adminCost",
+      "details",
+      "title",
+      "image",
+      "documents",
+    ];
+    for (const field of updatableFields) {
+      if (field in payload && payload[field] !== undefined) {
+        updates[field] = payload[field];
+      }
+    }
+
+    const updatedInvestment = await Investment.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+      session,
+    });
+
+    await session.commitTransaction();
+    return updatedInvestment;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 };
-
-
-
-
-
 export const InvestmentServices = {
   getAllInvestmentFromDB,
   getSingleInvestmentFromDB,

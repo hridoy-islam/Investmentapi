@@ -1,11 +1,11 @@
-import { Schema, model, Types } from "mongoose";
+import mongoose, { Schema, model, Types } from "mongoose";
 
 
 export const PaymentLogSchema = new Schema(
   {
     transactionType: {
       type: String,
-      enum: ["investment", "profitPayment","closeProject"],
+      enum: ["investment", "profitPayment","closeProject","commissionPayment"],
       required: true,
     },
     dueAmount: { type: Number, required: true },
@@ -22,6 +22,8 @@ export const PaymentLogSchema = new Schema(
 
 export const TransactionLogSchema = new Schema(
   {
+        _id: { type: Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+
     type: {
       type: String,
       enum: [
@@ -33,6 +35,8 @@ export const TransactionLogSchema = new Schema(
         "saleDeclared",
         "commissionCalculated",
         "paymentMade",
+        "commissionPaymentMade",
+        "grossProfit"
       ],
       required: true,
     },
@@ -50,12 +54,12 @@ const MonthlyTransactionSchema = new Schema(
   {
     month: { type: String, required: true }, 
 
-    investorId: { type: Types.ObjectId, ref: "User", required: true },
+    investorId: { type: Types.ObjectId, ref: "User" },
     investmentId: { type: Types.ObjectId, ref: "Investment", required: true },
 
     profit: { type: Number, required: true },
 
-    monthlyTotalDue: { type: Number, required: true },
+    monthlyTotalDue: { type: Number,default: 0, required: true },
     monthlyTotalPaid: { type: Number, default: 0 },
 
     status: {
