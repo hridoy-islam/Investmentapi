@@ -15,6 +15,7 @@ export const PaymentLogSchema = new Schema(
       enum: ["due", "partial", "paid"],
       required: true,
     },
+     metadata: { type: Schema.Types.Mixed },
     note: { type: String },
   },
   { timestamps: true }
@@ -36,7 +37,8 @@ export const TransactionLogSchema = new Schema(
         "commissionCalculated",
         "paymentMade",
         "commissionPaymentMade",
-        "grossProfit"
+        "grossProfit",
+        "netProfit",
       ],
       required: true,
     },

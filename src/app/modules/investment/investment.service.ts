@@ -105,63 +105,26 @@ export const updateInvestmentIntoDB = async (
       const netProfit = Number((grossProfit - adminCost).toFixed(2));
 
       const currentMonth = moment().format("YYYY-MM");
-      const saleOperationId = new mongoose.Types.ObjectId().toString();
-
-      const participants = await InvestmentParticipant.find({
-        investmentId: id,
-        status: "active",
-      }).session(session);
-
       const now = new Date();
-      const globalLogs = [
-        {
-          type: "saleDeclared",
-          message: `CMV / SALE £${payload.saleAmount}`,
-          metadata: {
-            amount: payload.saleAmount,
-            refId: saleOperationId,
-          },
-          createdAt: new Date(now.getTime() + 1),
-        },
-        {
-          type: "saleDeclared",
-          message: `Profit for sale -- Gross Profit £${grossProfit}`,
-          metadata: {
-            amount: grossProfit,
-            saleAmount: payload.saleAmount,
-            refId: saleOperationId,
-          },
-          createdAt: new Date(now.getTime() + 2),
-        },
-        {
-          type: "adminCostDeclared",
-          message: `Admin Cost ${adminCostRate}% for ${investment.title} -- Net Profit £${adminCost}`,
-          metadata: {
-            investmentId: id,
-            adminCostRate,
-            amount: adminCost,
-            cmv: payload.saleAmount,
-            refId: saleOperationId,
-          },
-          createdAt: new Date(now.getTime() + 3),
-        },
-        {
-          type: "grossProfit",
-          message: `Net Profit Allocated for ${investment.title}: £${netProfit}`,
-          metadata: { amount: netProfit },
-          createdAt: new Date(now.getTime() + 4),
-        },
-      ];
 
+      // Step 1: First create just the CMV/SALE log
+      const cmvLog = {
+        type: "saleDeclared",
+        message: `CMV / SALE £${saleAmount}`,
+        metadata: {
+          amount: saleAmount,
+        },
+        createdAt: new Date(now.getTime() + 1),
+      };
+
+      // Create or find global transaction
       let globalTransaction = await Transaction.findOne({
         investmentId: id,
         investorId: null,
         month: currentMonth,
       }).session(session);
 
-      if (globalTransaction) {
-        globalTransaction.logs.push(...globalLogs);
-      } else {
+      if (!globalTransaction) {
         globalTransaction = new Transaction({
           investmentId: id,
           investorId: null,
@@ -172,10 +135,133 @@ export const updateInvestmentIntoDB = async (
           monthlyTotalAgentDue: 0,
           monthlyTotalAgentPaid: 0,
           status: "due",
-          logs: globalLogs,
+          logs: [cmvLog],
         });
+      } else {
+        globalTransaction.logs.push(cmvLog);
       }
+
+      // Save to get the actual _id for the cmvLog
       await globalTransaction.save({ session });
+
+      // Reload to get the generated _id for the log
+      globalTransaction = await Transaction.findById(
+        globalTransaction._id
+      ).session(session);
+      if (!globalTransaction) {
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Global transaction not found after saving CMV log"
+        );
+      }
+      const savedCmvLog =
+        globalTransaction.logs[globalTransaction.logs.length - 1];
+
+      // Step 2: Now create Gross Profit log with reference to CMV log
+      const grossProfitLog = {
+        type: "grossProfit",
+        message: `Profit for sale (RefID: ${savedCmvLog._id}) Gross Profit £${grossProfit}`,
+        metadata: {
+          amount: grossProfit,
+          saleAmount: saleAmount,
+          refId: savedCmvLog._id,
+        },
+        createdAt: new Date(now.getTime() + 2),
+      };
+
+      if (!globalTransaction) {
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Global transaction not found when adding gross profit log"
+        );
+      }
+      globalTransaction.logs.push(grossProfitLog);
+      await globalTransaction.save({ session });
+
+      // Reload to get the generated _id for the grossProfitLog
+      globalTransaction = await Transaction.findById(
+        globalTransaction._id
+      ).session(session);
+      if (!globalTransaction) {
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Global transaction not found after saving gross profit log"
+        );
+      }
+      const savedGrossProfitLog =
+        globalTransaction.logs[globalTransaction.logs.length - 1];
+
+      // Step 3: Create Admin Cost log with reference to Gross Profit log
+      const adminCostLog = {
+        type: "adminCostDeclared",
+        message: `Admin Cost ${adminCostRate}% for ${investment.title} (RefID: ${savedGrossProfitLog._id}) Profit £${adminCost}`,
+        metadata: {
+          investmentId: id,
+          adminCostRate,
+          amount: adminCost,
+          cmv: saleAmount,
+          refId: savedGrossProfitLog._id,
+        },
+        createdAt: new Date(now.getTime() + 3),
+      };
+
+      let savedAdminCostLog: any = null;
+
+      if (globalTransaction) {
+        globalTransaction.logs.push(adminCostLog);
+        await globalTransaction.save({ session });
+
+        globalTransaction = await Transaction.findById(
+          globalTransaction._id
+        ).session(session);
+        if (!globalTransaction) {
+          throw new AppError(
+            httpStatus.INTERNAL_SERVER_ERROR,
+            "Global transaction not found after saving admin cost log"
+          );
+        }
+
+        savedAdminCostLog =
+          globalTransaction.logs[globalTransaction.logs.length - 1];
+      } else {
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Global transaction not found when adding admin cost log"
+        );
+      }
+
+      // Step 4: Create Net Profit log with reference to Admin Cost log
+      const netProfitLog = {
+        type: "netProfit",
+        message: `Net Profit Allocated for ${investment.title}: £${netProfit} (RefID: ${savedAdminCostLog._id})`,
+        metadata: {
+          amount: netProfit,
+          refId: savedAdminCostLog._id,
+        },
+        createdAt: new Date(now.getTime() + 4),
+      };
+
+      globalTransaction.logs.push(netProfitLog);
+      await globalTransaction.save({ session });
+
+      // Reload to get the generated _id for the netProfitLog
+      globalTransaction = await Transaction.findById(
+        globalTransaction._id
+      ).session(session);
+      if (!globalTransaction) {
+        throw new AppError(
+          httpStatus.INTERNAL_SERVER_ERROR,
+          "Global transaction not found after saving net profit log"
+        );
+      }
+      const savedNetProfitLog =
+        globalTransaction.logs[globalTransaction.logs.length - 1];
+
+      // Process participants with proper log references
+      const participants = await InvestmentParticipant.find({
+        investmentId: id,
+        status: "active",
+      }).session(session);
 
       const participantUpdates = [];
       const investorTxnPromises = [];
@@ -220,6 +306,7 @@ export const updateInvestmentIntoDB = async (
             amount: investorNetProfit,
             sharePercentage: investorSharePercent,
             investorName,
+            refId: savedNetProfitLog._id,
           },
           createdAt: new Date(),
         };
@@ -245,6 +332,7 @@ export const updateInvestmentIntoDB = async (
           });
         } else {
           investorTxn.logs.push(profitLog);
+          
           investorTxn.profit = Number(
             (investorTxn.profit + investorNetProfit).toFixed(2)
           );
@@ -254,7 +342,7 @@ export const updateInvestmentIntoDB = async (
         }
         investorTxnPromises.push(investorTxn.save({ session }));
 
-        // ✅ Agent Commission Logic
+        // Agent Commission Logic
         if (investor?.agent && participant.agentCommissionRate > 0) {
           const agent = await User.findById(investor.agent)
             .session(session)
@@ -270,7 +358,7 @@ export const updateInvestmentIntoDB = async (
             if (commission > 0) {
               const commissionLog = {
                 type: "commissionCalculated",
-                message: `Commission distributed to agent ${agent.name} (${agentCommissionRate}%) for ${investorName}: £${commission}`,
+                message: `Agent ${agent.name} has been assigned commission for ${investorName} under investment ${investment.title}`,
                 metadata: {
                   agentId: agent._id,
                   agentName: agent.name,
@@ -279,7 +367,7 @@ export const updateInvestmentIntoDB = async (
                   amount: commission,
                   investorSharePercent,
                   investorNetProfit,
-                  refId: saleOperationId,
+                  refId: savedNetProfitLog._id,
                 },
                 createdAt: new Date(),
               };
@@ -292,53 +380,71 @@ export const updateInvestmentIntoDB = async (
               }).session(session);
 
               if (!agentTxn) {
-                agentTxn = new AgentTransaction({
-                  investmentId: id,
-                  investorId: investor._id,
-                  agentId: agent._id,
-                  month: currentMonth,
-                  commissionDue: commission,
-                  commissionPaid: 0,
-                  status: "due",
-                  logs: [commissionLog],
-                  paymentLog: [],
-                });
-              } else {
-                agentTxn.logs.push(commissionLog);
-                agentTxn.commissionDue = Number(
-                  (agentTxn.commissionDue + commission).toFixed(2)
-                );
+  agentTxn = new AgentTransaction({
+    investmentId: id,
+    investorId: investor._id,
+    agentId: agent._id,
+    month: currentMonth,
+    commissionDue: commission,
+    commissionPaid: 0,
+    status: "due",
+    logs: [commissionLog],
+    paymentLog: [],
+  });
+} else {
+  agentTxn.logs.push(commissionLog);
+  agentTxn.commissionDue = Number(
+    (agentTxn.commissionDue + commission).toFixed(2)
+  );
 
-                if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
-                  agentTxn.status = "paid";
-                } else if (agentTxn.commissionPaid > 0) {
-                  agentTxn.status = "partial";
-                } else {
-                  agentTxn.status = "due";
-                }
-              }
+  if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
+    agentTxn.status = "paid";
+  } else if (agentTxn.commissionPaid > 0) {
+    agentTxn.status = "partial";
+  } else {
+    agentTxn.status = "due";
+  }
+}
 
-              agentTxnPromises.push(agentTxn.save({ session }));
+// ✅ Ensure commission log is also pushed to investor transaction
+let investorTransaction = await Transaction.findOne({
+  investmentId: id,
+  investorId: investor._id,
+  month: currentMonth,
+}).session(session);
 
-              let agentSummary = await AgentCommission.findOne({
-                agentId: agent._id,
-                investorId: investor._id,
-              }).session(session);
+if (investorTransaction) {
+  investorTransaction.logs.push({
+    ...commissionLog,
+    createdAt: new Date(), // ensure consistent timestamps
+  });
 
-              if (!agentSummary) {
-                agentSummary = new AgentCommission({
-                  agentId: agent._id,
-                  investorId: investor._id,
-                  totalCommissionDue: commission,
-                  totalCommissionPaid: 0,
-                });
-              } else {
-                agentSummary.totalCommissionDue = Number(
-                  (agentSummary.totalCommissionDue + commission).toFixed(2)
-                );
-              }
+  investorTxnPromises.push(investorTransaction.save({ session }));
+}
 
-              await agentSummary.save({ session });
+// ✅ Save the agentTxn as part of the same batch
+agentTxnPromises.push(agentTxn.save({ session }));
+
+// ✅ Save/update agentSummary
+let agentSummary = await AgentCommission.findOne({
+  agentId: agent._id,
+  investorId: investor._id,
+}).session(session);
+
+if (!agentSummary) {
+  agentSummary = new AgentCommission({
+    agentId: agent._id,
+    investorId: investor._id,
+    totalCommissionDue: commission,
+    totalCommissionPaid: 0,
+  });
+} else {
+  agentSummary.totalCommissionDue = Number(
+    (agentSummary.totalCommissionDue + commission).toFixed(2)
+  );
+}
+await agentSummary.save({ session });
+
             }
           }
         }
@@ -376,7 +482,6 @@ export const updateInvestmentIntoDB = async (
           profit: 0,
           monthlyTotalDue: 0,
           monthlyTotalPaid: 0,
-
           status: "due",
           logs: [logEntry],
         });
@@ -414,6 +519,7 @@ export const updateInvestmentIntoDB = async (
     session.endSession();
   }
 };
+
 export const InvestmentServices = {
   getAllInvestmentFromDB,
   getSingleInvestmentFromDB,

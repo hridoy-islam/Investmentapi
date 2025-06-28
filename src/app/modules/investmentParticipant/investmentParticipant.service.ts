@@ -7,12 +7,12 @@ import moment from "moment";
 import { InvestmentParticipant } from "./investmentParticipant.model";
 import { InvestmentParticipantSearchableFields } from "./investmentParticipant.constant";
 import { Transaction } from "../transactions/transactions.model";
+import { Investment } from "../investment/investment.model";
+import mongoose from "mongoose";
 
-
-
-
-
-const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant) => {
+const createInvestmentParticipantIntoDB = async (
+  payload: TInvestmentParticipant
+) => {
   try {
     const { investorId, investmentId, amount, agentCommissionRate } = payload;
 
@@ -20,8 +20,44 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
       throw new AppError(httpStatus.BAD_REQUEST, "Missing required fields");
     }
 
-    // Check for existing participant
-    let participant = await InvestmentParticipant.findOne({ investorId, investmentId });
+    // ✅ Get the investment/project
+    const investment = await Investment.findById(investmentId);
+    if (!investment) {
+      throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
+    }
+
+    // ✅ Calculate total invested so far in this project
+    const aggregation = await InvestmentParticipant.aggregate([
+      {
+        $match: {
+          investmentId: new mongoose.Types.ObjectId(investmentId),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalInvested: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const totalInvestedSoFar = aggregation[0]?.totalInvested || 0;
+    const remainingAmount =
+      Number(investment.amountRequired) - totalInvestedSoFar;
+
+    // ✅ Guard: Prevent over-investment
+    if (amount > remainingAmount) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Only £${remainingAmount} left to invest in this project`
+      );
+    }
+
+    // Check if participant already exists
+    let participant = await InvestmentParticipant.findOne({
+      investorId,
+      investmentId,
+    });
 
     if (!participant) {
       // Create new participant
@@ -33,15 +69,14 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
         status: "active",
       });
 
-      // ➕ Create MonthlyTransaction
       const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
-      const newTransaction = await Transaction.create({
+      await Transaction.create({
         month: currentMonth,
         investorId,
         investmentId,
-        profit: 0, // Initially no profit
-        monthlyTotalDue: amount,
+        profit: 0,
+        monthlyTotalDue: 0,
         monthlyTotalPaid: 0,
         status: "due",
         paymentLog: [
@@ -50,13 +85,7 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
             dueAmount: amount,
             paidAmount: 0,
             status: "due",
-            note: "Initial Investment Successfully Created",
-          },
-        ],
-        logs: [
-          {
-            type: "investmentAdded",
-            message: `Initial investment of £${amount} added.`,
+            note: `Initial investment of £${amount} added.`,
             metadata: {
               investorId,
               investmentId,
@@ -66,12 +95,10 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
         ],
       });
     } else {
-      // Update participant by incrementing amount and due
+      // Updating an existing participant
       participant.amount += amount;
       participant.totalDue += amount;
       await participant.save();
-
-     
     }
 
     return participant;
@@ -89,9 +116,13 @@ const createInvestmentParticipantIntoDB = async (payload: TInvestmentParticipant
   }
 };
 
-const getAllInvestmentParticipantFromDB = async (query: Record<string, unknown>) => {
+const getAllInvestmentParticipantFromDB = async (
+  query: Record<string, unknown>
+) => {
   const InvestmentParticipantQuery = new QueryBuilder(
-    InvestmentParticipant.find().populate("investorId").populate("investmentId"),
+    InvestmentParticipant.find()
+      .populate("investorId")
+      .populate("investmentId"),
     query
   )
     .search(InvestmentParticipantSearchableFields)
@@ -110,7 +141,9 @@ const getAllInvestmentParticipantFromDB = async (query: Record<string, unknown>)
 };
 
 const getSingleInvestmentParticipantFromDB = async (id: string) => {
-  const result = await InvestmentParticipant.findById(id).populate("investorId").populate("investmentId");
+  const result = await InvestmentParticipant.findById(id)
+    .populate("investorId")
+    .populate("investmentId");
   return result;
 };
 
@@ -124,8 +157,44 @@ const updateInvestmentParticipantIntoDB = async (
     throw new AppError(httpStatus.NOT_FOUND, "InvestmentParticipant not found");
   }
 
-  const hasAmount = payload.amount !== undefined && typeof payload.amount === 'number';
+  const hasAmount =
+    payload.amount !== undefined && typeof payload.amount === "number";
   const hasAgentCommissionRate = payload.agentCommissionRate !== undefined;
+
+  // Guard: Check if adding amount would exceed project's amountRequired
+  if (hasAmount) {
+    const investment = await Investment.findById(
+      investmentParticipant.investmentId
+    );
+    if (!investment) {
+      throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
+    }
+
+    // Get all participants for this investment
+    const allParticipants = await InvestmentParticipant.find({
+      investmentId: investmentParticipant.investmentId,
+    });
+
+    // Calculate current total invested
+    const currentTotalInvested = allParticipants.reduce(
+      (total, participant) => total + participant.amount,
+      0
+    );
+
+    // Calculate what the new total would be if we update this participant
+    const participantCurrentAmount = investmentParticipant.amount;
+    const newTotalInvested =
+      currentTotalInvested - participantCurrentAmount + payload.amount!;
+
+    if (newTotalInvested > Number(investment.amountRequired)) {
+      throw new AppError(
+        httpStatus.BAD_REQUEST,
+        `Cannot invest £${payload.amount}. It would exceed the required £${investment.amountRequired}. Current invested: £${currentTotalInvested}`
+      );
+    }
+  }
+
+  let previousAmount = investmentParticipant.amount;
 
   if (hasAmount && hasAgentCommissionRate) {
     investmentParticipant.amount = payload.amount!;
@@ -135,8 +204,31 @@ const updateInvestmentParticipantIntoDB = async (
     investmentParticipant.totalDue += payload.amount!;
   }
 
+  if (hasAmount) {
+    const updatedAmount = investmentParticipant.amount;
+
+    const monthlyTransaction = await Transaction.findOne({
+      investmentId: investmentParticipant.investmentId,
+      investorId: investmentParticipant.investorId,
+    });
+
+    if (monthlyTransaction) {
+      monthlyTransaction.logs.push({
+        type: "investmentUpdated",
+        message: `Investment amount updated from £${previousAmount} to £${updatedAmount}`,
+        metadata: {
+          previousAmount,
+          updatedAmount,
+          amount: payload.amount,
+        },
+      });
+
+      await monthlyTransaction.save();
+    }
+  }
+
   for (const key in payload) {
-    if (key !== 'amount') {
+    if (key !== "amount") {
       (investmentParticipant as any)[key] = (payload as any)[key];
     }
   }
@@ -191,13 +283,9 @@ const updateInvestmentParticipantIntoDB = async (
   return result;
 };
 
-
-
-
 export const InvestmentParticipantServices = {
   getAllInvestmentParticipantFromDB,
   getSingleInvestmentParticipantFromDB,
   updateInvestmentParticipantIntoDB,
   createInvestmentParticipantIntoDB,
-  
 };
