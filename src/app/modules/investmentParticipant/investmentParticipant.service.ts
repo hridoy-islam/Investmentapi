@@ -157,34 +157,33 @@ const updateInvestmentParticipantIntoDB = async (
     throw new AppError(httpStatus.NOT_FOUND, "InvestmentParticipant not found");
   }
 
-  const hasAmount =
-    payload.amount !== undefined && typeof payload.amount === "number";
+  const hasAmount = payload.amount !== undefined && typeof payload.amount === "number";
   const hasAgentCommissionRate = payload.agentCommissionRate !== undefined;
+
+  // Round payload.amount if present
+  if (hasAmount) {
+    payload.amount = Math.round(payload.amount * 100) / 100;
+  }
 
   // Guard: Check if adding amount would exceed project's amountRequired
   if (hasAmount) {
-    const investment = await Investment.findById(
-      investmentParticipant.investmentId
-    );
+    const investment = await Investment.findById(investmentParticipant.investmentId);
     if (!investment) {
       throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
     }
 
-    // Get all participants for this investment
     const allParticipants = await InvestmentParticipant.find({
       investmentId: investmentParticipant.investmentId,
     });
 
-    // Calculate current total invested
     const currentTotalInvested = allParticipants.reduce(
       (total, participant) => total + participant.amount,
       0
     );
 
-    // Calculate what the new total would be if we update this participant
     const participantCurrentAmount = investmentParticipant.amount;
     const newTotalInvested =
-      currentTotalInvested - participantCurrentAmount + payload.amount!;
+      currentTotalInvested - participantCurrentAmount + payload.amount;
 
     if (newTotalInvested > Number(investment.amountRequired)) {
       throw new AppError(
@@ -194,16 +193,19 @@ const updateInvestmentParticipantIntoDB = async (
     }
   }
 
-  let previousAmount = investmentParticipant.amount;
+  const previousAmount = investmentParticipant.amount;
 
-  if (hasAmount && hasAgentCommissionRate) {
-    investmentParticipant.amount = payload.amount!;
-    investmentParticipant.totalDue = payload.amount!;
-  } else if (hasAmount) {
-    investmentParticipant.amount += payload.amount!;
-    investmentParticipant.totalDue += payload.amount!;
-  }
+  // Update investment participant amounts
+if (hasAmount) {
+  investmentParticipant.amount += payload.amount!;
+  investmentParticipant.totalDue += payload.amount!;
+}
 
+  // Round participant values
+  investmentParticipant.amount = Math.round(investmentParticipant.amount * 100) / 100;
+  investmentParticipant.totalDue = Math.round(investmentParticipant.totalDue * 100) / 100;
+
+  // Update paymentLog if amount changed
   if (hasAmount) {
     const updatedAmount = investmentParticipant.amount;
 
@@ -213,27 +215,38 @@ const updateInvestmentParticipantIntoDB = async (
     });
 
     if (monthlyTransaction) {
-      monthlyTransaction.logs.push({
-        type: "investmentUpdated",
-        message: `Investment amount updated from £${previousAmount} to £${updatedAmount}`,
-        metadata: {
-          previousAmount,
-          updatedAmount,
-          amount: payload.amount,
-        },
+      // Round monthly values too
+      const roundedPaid = payload.amount!;
+      const roundedDue = updatedAmount;
+
+      monthlyTransaction.paymentLog.push({
+        transactionType: "investment",
+        dueAmount: 0,
+        paidAmount: 0,
+        status: "partial",
+        note: `Investment updated from £${Math.round(previousAmount * 100) / 100} to £${roundedDue}`,
+        metadata:{amount: roundedDue}
       });
+
+      monthlyTransaction.status = "partial";
+
+      // monthlyTransaction.monthlyTotalDue = roundedDue;
+      // monthlyTransaction.monthlyTotalPaid = Math.round(
+      //   (monthlyTransaction.monthlyTotalPaid + roundedPaid) * 100
+      // ) / 100;
 
       await monthlyTransaction.save();
     }
   }
 
+  // Apply other payload updates
   for (const key in payload) {
     if (key !== "amount") {
       (investmentParticipant as any)[key] = (payload as any)[key];
     }
   }
 
-  // ✅ Handle project closure logic
+  // Handle project closure
   if (
     payload.status === "block" &&
     payload.totalDue === 0 &&
@@ -243,35 +256,35 @@ const updateInvestmentParticipantIntoDB = async (
     const investmentId = investmentParticipant.investmentId;
     const investorId = investmentParticipant.investorId;
 
-    // Set amount to 0 if payload.amount exists (even if it's 0)
     if (payload.amount !== undefined) {
       investmentParticipant.amount = 0;
     }
 
-    // Find and update MonthlyTransaction
     const monthlyTransaction = await Transaction.findOne({
-      investmentId: investmentId,
-      investorId: investorId,
+      investmentId,
+      investorId,
     });
 
     if (monthlyTransaction) {
-      monthlyTransaction.monthlyTotalPaid = payload.totalPaid;
+      const roundedPaid = Math.round(payload.totalPaid * 100) / 100;
+
+      monthlyTransaction.monthlyTotalPaid = roundedPaid;
       monthlyTransaction.status = "paid";
 
       monthlyTransaction.paymentLog.push({
         transactionType: "closeProject",
         dueAmount: 0,
-        paidAmount: payload.totalPaid,
+        paidAmount: roundedPaid,
         status: "paid",
         note: "Project closed and fully paid",
       });
 
       monthlyTransaction.logs.push({
         type: "projectClosed",
-        message: `Project closed. Total paid: ${payload.totalPaid}`,
+        message: `Project closed. Total paid: £${roundedPaid}`,
         metadata: {
-          investmentId: investmentId,
-          investorId: investorId,
+          investmentId,
+          investorId,
         },
       });
 

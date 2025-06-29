@@ -68,12 +68,10 @@ const updateTransactionIntoDB = async (
     throw new AppError(httpStatus.NOT_FOUND, 'Transaction not found');
   }
 
-  const existingLogs = transaction.paymentLog || [];
+  // Use monthlyTotalDue instead of lastLog.dueAmount
+  const initialDue = transaction.monthlyTotalDue;
 
-  const lastLog = existingLogs[existingLogs.length - 1];
-  const initialDue = lastLog ? lastLog.dueAmount : transaction.profit;
-
-  const newPaidAmount = parseFloat( (payload as any).paidAmount?.toString() || '0');
+  const newPaidAmount = parseFloat((payload as any).paidAmount?.toString() || '0');
 
   if (newPaidAmount > initialDue) {
     throw new AppError(
@@ -137,7 +135,6 @@ const updateTransactionIntoDB = async (
 
   return transaction;
 };
-
 
 
 

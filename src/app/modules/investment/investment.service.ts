@@ -132,8 +132,6 @@ export const updateInvestmentIntoDB = async (
           profit: 0,
           monthlyTotalDue: 0,
           monthlyTotalPaid: 0,
-          monthlyTotalAgentDue: 0,
-          monthlyTotalAgentPaid: 0,
           status: "due",
           logs: [cmvLog],
         });
@@ -332,7 +330,7 @@ export const updateInvestmentIntoDB = async (
           });
         } else {
           investorTxn.logs.push(profitLog);
-          
+
           investorTxn.profit = Number(
             (investorTxn.profit + investorNetProfit).toFixed(2)
           );
@@ -380,71 +378,70 @@ export const updateInvestmentIntoDB = async (
               }).session(session);
 
               if (!agentTxn) {
-  agentTxn = new AgentTransaction({
-    investmentId: id,
-    investorId: investor._id,
-    agentId: agent._id,
-    month: currentMonth,
-    commissionDue: commission,
-    commissionPaid: 0,
-    status: "due",
-    logs: [commissionLog],
-    paymentLog: [],
-  });
-} else {
-  agentTxn.logs.push(commissionLog);
-  agentTxn.commissionDue = Number(
-    (agentTxn.commissionDue + commission).toFixed(2)
-  );
+                agentTxn = new AgentTransaction({
+                  investmentId: id,
+                  investorId: investor._id,
+                  agentId: agent._id,
+                  month: currentMonth,
+                  commissionDue: commission,
+                  commissionPaid: 0,
+                  status: "due",
+                  logs: [commissionLog],
+                  paymentLog: [],
+                });
+              } else {
+                agentTxn.logs.push(commissionLog);
+                agentTxn.commissionDue = Number(
+                  (agentTxn.commissionDue + commission).toFixed(2)
+                );
 
-  if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
-    agentTxn.status = "paid";
-  } else if (agentTxn.commissionPaid > 0) {
-    agentTxn.status = "partial";
-  } else {
-    agentTxn.status = "due";
-  }
-}
+                if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
+                  agentTxn.status = "paid";
+                } else if (agentTxn.commissionPaid > 0) {
+                  agentTxn.status = "partial";
+                } else {
+                  agentTxn.status = "due";
+                }
+              }
 
-// ✅ Ensure commission log is also pushed to investor transaction
-let investorTransaction = await Transaction.findOne({
-  investmentId: id,
-  investorId: investor._id,
-  month: currentMonth,
-}).session(session);
+              // ✅ Ensure commission log is also pushed to investor transaction
+              let investorTransaction = await Transaction.findOne({
+                investmentId: id,
+                investorId: investor._id,
+                month: currentMonth,
+              }).session(session);
 
-if (investorTransaction) {
-  investorTransaction.logs.push({
-    ...commissionLog,
-    createdAt: new Date(), // ensure consistent timestamps
-  });
+              if (investorTransaction) {
+                investorTransaction.logs.push({
+                  ...commissionLog,
+                  createdAt: new Date(), // ensure consistent timestamps
+                });
 
-  investorTxnPromises.push(investorTransaction.save({ session }));
-}
+                investorTxnPromises.push(investorTransaction.save({ session }));
+              }
 
-// ✅ Save the agentTxn as part of the same batch
-agentTxnPromises.push(agentTxn.save({ session }));
+              // ✅ Save the agentTxn as part of the same batch
+              agentTxnPromises.push(agentTxn.save({ session }));
 
-// ✅ Save/update agentSummary
-let agentSummary = await AgentCommission.findOne({
-  agentId: agent._id,
-  investorId: investor._id,
-}).session(session);
+              // ✅ Save/update agentSummary
+              let agentSummary = await AgentCommission.findOne({
+                agentId: agent._id,
+                investorId: investor._id,
+              }).session(session);
 
-if (!agentSummary) {
-  agentSummary = new AgentCommission({
-    agentId: agent._id,
-    investorId: investor._id,
-    totalCommissionDue: commission,
-    totalCommissionPaid: 0,
-  });
-} else {
-  agentSummary.totalCommissionDue = Number(
-    (agentSummary.totalCommissionDue + commission).toFixed(2)
-  );
-}
-await agentSummary.save({ session });
-
+              if (!agentSummary) {
+                agentSummary = new AgentCommission({
+                  agentId: agent._id,
+                  investorId: investor._id,
+                  totalCommissionDue: commission,
+                  totalCommissionPaid: 0,
+                });
+              } else {
+                agentSummary.totalCommissionDue = Number(
+                  (agentSummary.totalCommissionDue + commission).toFixed(2)
+                );
+              }
+              await agentSummary.save({ session });
             }
           }
         }
@@ -462,7 +459,7 @@ await agentSummary.save({ session });
       const logEntry = {
         type: "investmentUpdated",
         message: logMessage,
-        metadata: { updatedAmountRequired },
+        metadata: { amount: updatedAmountRequired },
         createdAt: new Date(),
       };
 
