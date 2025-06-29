@@ -89,7 +89,7 @@ export const updateInvestmentIntoDB = async (
         (previousAmount + payload.amountRequired).toFixed(2)
       );
       updates.amountRequired = updatedAmountRequired;
-      logMessage = `Investment Raised capital £${updatedAmountRequired}`;
+      logMessage = `Investment Raised capital £${ payload.amountRequired}`;
     }
 
     // Handle saleAmount and profit distribution
@@ -192,7 +192,7 @@ export const updateInvestmentIntoDB = async (
       // Step 3: Create Admin Cost log with reference to Gross Profit log
       const adminCostLog = {
         type: "adminCostDeclared",
-        message: `Admin Cost ${adminCostRate}% for ${investment.title} (RefID: ${savedGrossProfitLog._id}) Profit £${adminCost}`,
+        message: `Admin Cost ${adminCostRate}% for ${investment.title} (RefID: ${savedGrossProfitLog._id})`,
         metadata: {
           investmentId: id,
           adminCostRate,
@@ -231,7 +231,7 @@ export const updateInvestmentIntoDB = async (
       // Step 4: Create Net Profit log with reference to Admin Cost log
       const netProfitLog = {
         type: "netProfit",
-        message: `Net Profit Allocated for ${investment.title}: £${netProfit} (RefID: ${savedAdminCostLog._id})`,
+        message: `Net Profit Allocated for ${investment.title}(RefID: ${savedAdminCostLog._id})`,
         metadata: {
           amount: netProfit,
           refId: savedAdminCostLog._id,
@@ -296,9 +296,7 @@ export const updateInvestmentIntoDB = async (
 
         const profitLog = {
           type: "profitDistributed",
-          message: `Profit Distributed to ${investorName} from net profit £${netProfit} x ${investorSharePercent.toFixed(
-            2
-          )}% = £${investorNetProfit}`,
+          message: `Profit Distributed to ${investorName}`,
           metadata: {
             netProfit,
             amount: investorNetProfit,
@@ -330,13 +328,15 @@ export const updateInvestmentIntoDB = async (
           });
         } else {
           investorTxn.logs.push(profitLog);
-
           investorTxn.profit = Number(
             (investorTxn.profit + investorNetProfit).toFixed(2)
           );
           investorTxn.monthlyTotalDue = Number(
             (investorTxn.monthlyTotalDue + investorNetProfit).toFixed(2)
           );
+         
+    investorTxn.status = "partial";
+  
         }
         investorTxnPromises.push(investorTxn.save({ session }));
 
@@ -356,7 +356,7 @@ export const updateInvestmentIntoDB = async (
             if (commission > 0) {
               const commissionLog = {
                 type: "commissionCalculated",
-                message: `Agent ${agent.name} has been assigned commission for ${investorName} under investment ${investment.title}`,
+                message: `Commission distributed to Agent ${agent.name} for ${investorName}'s profit`,
                 metadata: {
                   agentId: agent._id,
                   agentName: agent.name,
@@ -459,7 +459,7 @@ export const updateInvestmentIntoDB = async (
       const logEntry = {
         type: "investmentUpdated",
         message: logMessage,
-        metadata: { amount: updatedAmountRequired },
+        metadata: { amount: payload.amountRequired,UpdateAmount: updatedAmountRequired },
         createdAt: new Date(),
       };
 

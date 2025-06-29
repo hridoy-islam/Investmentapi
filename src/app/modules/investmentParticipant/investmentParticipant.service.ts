@@ -9,6 +9,7 @@ import { InvestmentParticipantSearchableFields } from "./investmentParticipant.c
 import { Transaction } from "../transactions/transactions.model";
 import { Investment } from "../investment/investment.model";
 import mongoose from "mongoose";
+import { User } from "../user/user.model";
 
 const createInvestmentParticipantIntoDB = async (
   payload: TInvestmentParticipant
@@ -197,47 +198,45 @@ const updateInvestmentParticipantIntoDB = async (
 
   // Update investment participant amounts
 if (hasAmount) {
-  investmentParticipant.amount += payload.amount!;
-  investmentParticipant.totalDue += payload.amount!;
+  investmentParticipant.amount = Math.round((investmentParticipant.amount + payload.amount!) * 100) / 100;
+  investmentParticipant.totalDue = Math.round((investmentParticipant.totalDue + payload.amount!) * 100) / 100;
 }
+
 
   // Round participant values
   investmentParticipant.amount = Math.round(investmentParticipant.amount * 100) / 100;
   investmentParticipant.totalDue = Math.round(investmentParticipant.totalDue * 100) / 100;
 
   // Update paymentLog if amount changed
-  if (hasAmount) {
-    const updatedAmount = investmentParticipant.amount;
+if (hasAmount) {
+  const updatedAmount = investmentParticipant.amount;
 
-    const monthlyTransaction = await Transaction.findOne({
-      investmentId: investmentParticipant.investmentId,
-      investorId: investmentParticipant.investorId,
+  // Fetch investor separately
+  const investor = await User.findById(investmentParticipant.investorId);
+  const investorName = investor ? investor.name : 'Investor';
+
+  const monthlyTransaction = await Transaction.findOne({
+    investmentId: investmentParticipant.investmentId,
+    investorId: investmentParticipant.investorId,
+  });
+
+  if (monthlyTransaction) {
+    monthlyTransaction.paymentLog.push({
+      transactionType: "investment",
+      dueAmount: 0,
+      paidAmount: 0,
+      status: "partial",
+      note: `${investorName} made an additional investment in the project`,
+      metadata: { amount: payload.amount }
     });
 
-    if (monthlyTransaction) {
-      // Round monthly values too
-      const roundedPaid = payload.amount!;
-      const roundedDue = updatedAmount;
+    monthlyTransaction.status = "partial";
 
-      monthlyTransaction.paymentLog.push({
-        transactionType: "investment",
-        dueAmount: 0,
-        paidAmount: 0,
-        status: "partial",
-        note: `Investment updated from £${Math.round(previousAmount * 100) / 100} to £${roundedDue}`,
-        metadata:{amount: roundedDue}
-      });
-
-      monthlyTransaction.status = "partial";
-
-      // monthlyTransaction.monthlyTotalDue = roundedDue;
-      // monthlyTransaction.monthlyTotalPaid = Math.round(
-      //   (monthlyTransaction.monthlyTotalPaid + roundedPaid) * 100
-      // ) / 100;
-
-      await monthlyTransaction.save();
-    }
+    await monthlyTransaction.save();
   }
+}
+
+
 
   // Apply other payload updates
   for (const key in payload) {

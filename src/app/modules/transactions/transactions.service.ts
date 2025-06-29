@@ -90,16 +90,10 @@ const updateTransactionIntoDB = async (
     note: (payload as any).note || ''
   });
 
-  // Recalculate totals
-  const totalPaid = transaction.paymentLog.reduce(
-    (sum, log) => sum + log.paidAmount,
-    0
-  );
-  const totalDue = transaction.profit - totalPaid;
-
-  transaction.monthlyTotalPaid = totalPaid;
-  transaction.monthlyTotalDue = totalDue;
-  transaction.status = totalDue > 0 ? 'partial' : 'paid';
+  // Update monthly totals
+  transaction.monthlyTotalPaid = (transaction.monthlyTotalPaid || 0) + newPaidAmount;
+  transaction.monthlyTotalDue = updatedDueAmount;
+  transaction.status = updatedDueAmount > 0 ? 'partial' : 'paid';
 
   // ✅ Save updated transaction
   await transaction.save();
@@ -111,31 +105,15 @@ const updateTransactionIntoDB = async (
   });
 
   if (participant) {
-    // Recalculate totals from all transactions
-    const allTransactions = await Transaction.find({
-      investorId: transaction.investorId,
-      investmentId: transaction.investmentId
-    });
-
-    const totalPaidAcrossTransactions = allTransactions.reduce(
-      (sum, tx) => sum + (tx.monthlyTotalPaid || 0),
-      0
-    );
-
-    const totalDueAcrossTransactions = allTransactions.reduce(
-      (sum, tx) => sum + (tx.monthlyTotalDue || 0),
-      0
-    );
-
-    participant.totalPaid = totalPaidAcrossTransactions;
-    participant.totalDue = totalDueAcrossTransactions;
+    // For totalDue, we want to reduce it by the paid amount, not recalculate from all transactions
+    participant.totalPaid = (participant.totalPaid || 0) + newPaidAmount;
+    participant.totalDue = (participant.totalDue || 0) - newPaidAmount;
 
     await participant.save();
   }
 
   return transaction;
 };
-
 
 
 
