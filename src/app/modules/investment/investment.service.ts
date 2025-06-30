@@ -266,8 +266,7 @@ export const updateInvestmentIntoDB = async (
       const agentTxnPromises = [];
 
       for (const participant of participants) {
-        const investorSharePercent =
-          (100 * participant.amount) / initialInvestment;
+        const investorSharePercent = Number(((100 * participant.amount) / initialInvestment).toFixed(2));
         const investorNetProfit = Number(
           ((netProfit * investorSharePercent) / 100).toFixed(2)
         );
