@@ -86,7 +86,7 @@ const createInvestmentParticipantIntoDB = async (
             dueAmount: amount,
             paidAmount: 0,
             status: "due",
-            note: `Initial investment of £${amount} added.`,
+            note: `Initial investment added.`,
             metadata: {
               investorId,
               investmentId,
@@ -280,10 +280,11 @@ if (hasAmount) {
 
       monthlyTransaction.logs.push({
         type: "projectClosed",
-        message: `Project closed. Total paid: £${roundedPaid}`,
+        message: `Project closed and fully paid`,
         metadata: {
           investmentId,
           investorId,
+          amount:roundedPaid
         },
       });
 

@@ -89,7 +89,7 @@ export const updateInvestmentIntoDB = async (
         (previousAmount + payload.amountRequired).toFixed(2)
       );
       updates.amountRequired = updatedAmountRequired;
-      logMessage = `Investment Raised capital £${ payload.amountRequired}`;
+      logMessage = `Investment Raised capital`;
     }
 
     // Handle saleAmount and profit distribution
@@ -110,7 +110,7 @@ export const updateInvestmentIntoDB = async (
       // Step 1: First create just the CMV/SALE log
       const cmvLog = {
         type: "saleDeclared",
-        message: `CMV / SALE £${saleAmount}`,
+        message: `CMV / SALE`,
         metadata: {
           amount: saleAmount,
         },
@@ -158,7 +158,7 @@ export const updateInvestmentIntoDB = async (
       // Step 2: Now create Gross Profit log with reference to CMV log
       const grossProfitLog = {
         type: "grossProfit",
-        message: `Profit for sale (RefID: ${savedCmvLog._id}) Gross Profit £${grossProfit}`,
+        message: `Gross Profit for sale (RefID: ${savedCmvLog._id})`,
         metadata: {
           amount: grossProfit,
           saleAmount: saleAmount,
@@ -296,7 +296,7 @@ export const updateInvestmentIntoDB = async (
 
         const profitLog = {
           type: "profitDistributed",
-          message: `Profit Distributed to ${investorName}`,
+          message: `Profit Distributed to ${investorName} for ${investorSharePercent}% share`,
           metadata: {
             netProfit,
             amount: investorNetProfit,
@@ -334,9 +334,8 @@ export const updateInvestmentIntoDB = async (
           investorTxn.monthlyTotalDue = Number(
             (investorTxn.monthlyTotalDue + investorNetProfit).toFixed(2)
           );
-         
-    investorTxn.status = "partial";
-  
+
+          investorTxn.status = "partial";
         }
         investorTxnPromises.push(investorTxn.save({ session }));
 
@@ -365,6 +364,8 @@ export const updateInvestmentIntoDB = async (
                   amount: commission,
                   investorSharePercent,
                   investorNetProfit,
+                  investmentId: id,
+                  investmentName: investment.title,
                   refId: savedNetProfitLog._id,
                 },
                 createdAt: new Date(),
@@ -391,16 +392,21 @@ export const updateInvestmentIntoDB = async (
                 });
               } else {
                 agentTxn.logs.push(commissionLog);
+                // Update due and profit
                 agentTxn.commissionDue = Number(
                   (agentTxn.commissionDue + commission).toFixed(2)
                 );
+                agentTxn.profit = Number(
+                  ((agentTxn.profit || 0) + commission).toFixed(2)
+                );
 
-                if (agentTxn.commissionPaid >= agentTxn.commissionDue) {
+                // Recalculate status properly after due is updated
+                if (agentTxn.commissionDue === 0) {
                   agentTxn.status = "paid";
-                } else if (agentTxn.commissionPaid > 0) {
-                  agentTxn.status = "partial";
-                } else {
+                } else if (agentTxn.commissionPaid === 0) {
                   agentTxn.status = "due";
+                } else {
+                  agentTxn.status = "partial";
                 }
               }
 
@@ -459,7 +465,10 @@ export const updateInvestmentIntoDB = async (
       const logEntry = {
         type: "investmentUpdated",
         message: logMessage,
-        metadata: { amount: payload.amountRequired,UpdateAmount: updatedAmountRequired },
+        metadata: {
+          amount: payload.amountRequired,
+          UpdateAmount: updatedAmountRequired,
+        },
         createdAt: new Date(),
       };
 

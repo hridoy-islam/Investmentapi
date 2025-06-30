@@ -44,7 +44,7 @@ const AgentTransactionSchema = new Schema(
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     investmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Investment", required: true },
     investorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-
+    profit: { type: Number, required: true, default: 0 },
     commissionDue: { type: Number, required: true },
     commissionPaid: { type: Number, default: 0 },
 

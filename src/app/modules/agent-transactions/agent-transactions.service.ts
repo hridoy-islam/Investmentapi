@@ -84,47 +84,44 @@ const updateAgentTransactionIntoDB = async (
 
   // Handle payment update
   if (payload.paidAmount && payload.paidAmount > 0) {
-    const paidAmount = Number(payload.paidAmount.toFixed(2));
-    const newCommissionPaid = Number((agentTransaction.commissionPaid + paidAmount).toFixed(2));
-    const newCommissionDue = Math.max(0, Number((agentTransaction.commissionDue - paidAmount).toFixed(2)));
+  const paidAmount = Number(payload.paidAmount.toFixed(2));
+  const newCommissionPaid = Number((agentTransaction.commissionPaid + paidAmount).toFixed(2));
+  const newCommissionDue = Math.max(0, Number((agentTransaction.commissionDue - paidAmount).toFixed(2)));
 
-    // Determine updated status
-    let updatedStatus: "due" | "partial" | "paid" = "due";
-    if (newCommissionPaid >= agentTransaction.commissionDue) {
-      updatedStatus = "paid";
-    } else if (newCommissionPaid > 0) {
-      updatedStatus = "partial";
-    }
-
-    // Add payment log entry
-    agentTransaction.paymentLog.push({
-      transactionType: "commissionPayment",
-      dueAmount: agentTransaction.commissionDue,
-      paidAmount,
-      status: updatedStatus,
-      note: payload.note || "",
-    });
-
-    // Apply updates to transaction
-    agentTransaction.commissionPaid = newCommissionPaid;
-    agentTransaction.commissionDue = newCommissionDue;
-    agentTransaction.status = updatedStatus;
-
-    // Also update AgentCommissionSummary
-    await AgentCommission.findOneAndUpdate(
-      {
-        agentId: agentTransaction.agentId,
-        investorId: agentTransaction.investorId,
-      },
-      {
-        $inc: {
-          totalCommissionPaid: paidAmount,
-          totalCommissionDue: -paidAmount,
-        },
-      },
-      { new: true, upsert: true } // create if not exists
-    );
+  let updatedStatus: "due" | "partial" | "paid" = "due";
+  if (newCommissionDue === 0) {
+    updatedStatus = "paid";
+  } else if (newCommissionPaid > 0) {
+    updatedStatus = "partial";
   }
+
+  agentTransaction.paymentLog.push({
+    transactionType: "commissionPayment",
+    dueAmount: agentTransaction.commissionDue,
+    paidAmount,
+    status: updatedStatus,
+    note: payload.note || "",
+  });
+
+  agentTransaction.commissionPaid = newCommissionPaid;
+  agentTransaction.commissionDue = newCommissionDue;
+  agentTransaction.status = updatedStatus;
+
+  await AgentCommission.findOneAndUpdate(
+    {
+      agentId: agentTransaction.agentId,
+      investorId: agentTransaction.investorId,
+    },
+    {
+      $inc: {
+        totalCommissionPaid: paidAmount,
+        totalCommissionDue: -paidAmount,
+      },
+    },
+    { new: true, upsert: true }
+  );
+}
+
 
   // Save updates
   await agentTransaction.save();
