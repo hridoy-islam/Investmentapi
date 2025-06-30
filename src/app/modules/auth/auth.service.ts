@@ -47,86 +47,86 @@ const checkLogin = async (payload: TLogin, req: any) => {
 
     
     // Get the client's IP address
-    const ipAddress = requestIp.getClientIp(req);
-    if (!ipAddress) {
-      console.error("Could not retrieve IP address from request.");
-      throw new AppError(
-        httpStatus.INTERNAL_SERVER_ERROR,
-        "IP address retrieval failed"
-      );
-    }
+    // const ipAddress = requestIp.getClientIp(req);
+    // if (!ipAddress) {
+    //   console.error("Could not retrieve IP address from request.");
+    //   throw new AppError(
+    //     httpStatus.INTERNAL_SERVER_ERROR,
+    //     "IP address retrieval failed"
+    //   );
+    // }
 
     // Parse user agent
-    const parser = new UAParser.UAParser(req.headers["user-agent"]);
-    const uaResult = parser.getResult();
+    // const parser = new UAParser.UAParser(req.headers["user-agent"]);
+    // const uaResult = parser.getResult();
 
     // Create device fingerprint
-    const deviceFingerprint = crypto
-      .createHash("sha256")
-      .update(req.headers["user-agent"] + req.headers["accept-language"])
-      .digest("hex");
+    // const deviceFingerprint = crypto
+    //   .createHash("sha256")
+    //   .update(req.headers["user-agent"] + req.headers["accept-language"])
+    //   .digest("hex");
 
     // Prepare user agent info object
-    const userAgentInfo = {
-      browser: {
-        name: uaResult.browser.name,
-        version: uaResult.browser.version,
-      },
-      os: {
-        name: uaResult.os.name,
-        version: uaResult.os.version,
-      },
-      device: {
-        model: uaResult.device?.model || "Desktop",
-        type: uaResult.device?.type || "desktop",
-        vendor: uaResult.device?.vendor || "unknown",
-      },
-      cpu: {
-        architecture: uaResult.cpu.architecture,
-      },
-      ipAddress: ipAddress,
-      macAddress: deviceFingerprint,
-      timestamp: new Date(),
-    };
+    // const userAgentInfo = {
+    //   browser: {
+    //     name: uaResult.browser.name,
+    //     version: uaResult.browser.version,
+    //   },
+    //   os: {
+    //     name: uaResult.os.name,
+    //     version: uaResult.os.version,
+    //   },
+    //   device: {
+    //     model: uaResult.device?.model || "Desktop",
+    //     type: uaResult.device?.type || "desktop",
+    //     vendor: uaResult.device?.vendor || "unknown",
+    //   },
+    //   cpu: {
+    //     architecture: uaResult.cpu.architecture,
+    //   },
+    //   ipAddress: ipAddress,
+    //   macAddress: deviceFingerprint,
+    //   timestamp: new Date(),
+    // };
 
     // Update user with new login info
-    await User.findByIdAndUpdate(foundUser._id, {
-      $push: {
-        userAgentInfo: userAgentInfo,
-      },
-    });
+    // await User.findByIdAndUpdate(foundUser._id, {
+    //   $push: {
+    //     userAgentInfo: userAgentInfo,
+    //   },
+    // });
 
     // Prepare JWT payload
 
 
     // If user is not authorized, generate OTP and send it
-    if (!foundUser.isValided) {
-      const { otp, otpExpiry } = generateOtpAndExpiry();
+    // if (!foundUser.isValided) {
+    //   const { otp, otpExpiry } = generateOtpAndExpiry();
 
-      await User.findByIdAndUpdate(foundUser._id, {
-        otp,
-        otpExpiry,
-        isUsed: false,
-      });
+    //   await User.findByIdAndUpdate(foundUser._id, {
+    //     otp,
+    //     otpExpiry,
+    //     isUsed: false,
+    //   });
 
-      const emailSubject = "Validate Your Profile with OTP";
-      await sendEmail(
-        foundUser.email,
-        "verify_email",
-        emailSubject,
-        foundUser.name,
-        otp
-      );
-    }
+    //   const emailSubject = "Validate Your Profile with OTP";
+    //   await sendEmail(
+    //     foundUser.email,
+    //     "verify_email",
+    //     emailSubject,
+    //     foundUser.name,
+    //     otp
+    //   );
+    // }
 
     const jwtPayload = {
       _id: foundUser._id?.toString(),
       email: foundUser?.email,
       name: foundUser?.name,
       role: foundUser?.role,
-      authorized: foundUser?.authorized,
-      isValided: foundUser?.isValided,
-      isCompleted: foundUser?.isCompleted,
+      // authorized: foundUser?.authorized,
+      // isValided: foundUser?.isValided,
+      // isCompleted: foundUser?.isCompleted,
     };
     
     // Generate access and refresh tokens
@@ -154,6 +154,10 @@ const checkLogin = async (payload: TLogin, req: any) => {
     );
   }
 };
+
+
+
+
 const refreshToken = async (token: string) => {
   if (!token || typeof token !== "string") {
     throw new AppError(
