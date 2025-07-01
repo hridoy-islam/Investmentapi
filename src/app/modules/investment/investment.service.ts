@@ -384,6 +384,7 @@ export const updateInvestmentIntoDB = async (
                   agentId: agent._id,
                   month: currentMonth,
                   commissionDue: commission,
+                  profit: commission,
                   commissionPaid: 0,
                   status: "due",
                   logs: [commissionLog],
