@@ -5,7 +5,7 @@ export const PaymentLogSchema = new Schema(
   {
     transactionType: {
       type: String,
-      enum: ["investment", "profitPayment","closeProject","commissionPayment"],
+      enum: ["investment","investmentUpdated", "profitPayment","closeProject","commissionPayment"],
       required: true,
     },
     dueAmount: { type: Number, required: true },

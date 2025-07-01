@@ -222,7 +222,11 @@ const updateInvestmentParticipantIntoDB = async (
     Math.round(investmentParticipant.totalDue * 100) / 100;
 
   // Update paymentLog if amount changed
-  if (hasAmount) {
+  if (
+    hasAmount &&
+    payload.amount !== 0 && // Skip log if amount is 0
+    !(payload.status === "block" && payload.totalDue === 0)
+  ) {
     const updatedAmount = investmentParticipant.amount;
 
     // Fetch investor separately
@@ -236,7 +240,7 @@ const updateInvestmentParticipantIntoDB = async (
 
     if (monthlyTransaction) {
       monthlyTransaction.paymentLog.push({
-        transactionType: "investment",
+        transactionType: "investmentUpdated",
         dueAmount: 0,
         paidAmount: 0,
         status: "partial",
@@ -259,50 +263,59 @@ const updateInvestmentParticipantIntoDB = async (
 
   // Handle project closure
   if (
-    payload.status === "block" &&
-    payload.totalDue === 0 &&
-    payload.totalPaid &&
-    payload.totalPaid > 0
-  ) {
-    const investmentId = investmentParticipant.investmentId;
-    const investorId = investmentParticipant.investorId;
+  payload.status === "block" &&
+  payload.totalDue === 0 &&
+  payload.totalPaid &&
+  payload.totalPaid > 0
+) {
+  const investmentId = investmentParticipant.investmentId;
+  const investorId = investmentParticipant.investorId;
 
-    if (payload.amount !== undefined) {
-      investmentParticipant.amount = 0;
+  if (payload.amount !== undefined) {
+    investmentParticipant.amount = 0;
+  }
+
+  const investor = await User.findById(investorId);
+
+  // Find all transactions for this investor & investment
+  const transactions = await Transaction.find({
+    investmentId,
+    investorId,
+  }).sort({ createdAt: 1 }); // Ensure chronological order
+
+  if (transactions && transactions.length > 0) {
+    const roundedPaid = Math.round(payload.totalPaid * 100) / 100;
+
+    // Step 1: Zero out all dues
+    for (const tx of transactions) {
+      tx.monthlyTotalDue = 0;
     }
 
-    const monthlyTransaction = await Transaction.findOne({
-      investmentId,
-      investorId,
+    // Step 2: Add totalPaid to the last (most recent) transaction
+    const lastTx = transactions[transactions.length - 1];
+    lastTx.monthlyTotalPaid =
+      Math.round((lastTx.monthlyTotalPaid + roundedPaid) * 100) / 100;
+    lastTx.status = "paid";
+
+    // Step 3: Push closing log once
+    lastTx.paymentLog.push({
+      transactionType: "closeProject",
+      dueAmount: 0,
+      paidAmount: roundedPaid,
+      status: "paid",
+      note: "Project closed and fully paid",
+      metadata: {
+        investmentId,
+        investorId,
+        investorName: investor?.name || "Investor",
+        amount: roundedPaid,
+      },
     });
 
-    if (monthlyTransaction) {
-      const roundedPaid = Math.round(payload.totalPaid * 100) / 100;
-
-      monthlyTransaction.monthlyTotalPaid = roundedPaid;
-      monthlyTransaction.status = "paid";
-
-      monthlyTransaction.paymentLog.push({
-        transactionType: "closeProject",
-        dueAmount: 0,
-        paidAmount: roundedPaid,
-        status: "paid",
-        note: "Project closed and fully paid",
-      });
-
-      monthlyTransaction.logs.push({
-        type: "projectClosed",
-        message: `Project closed and fully paid`,
-        metadata: {
-          investmentId,
-          investorId,
-          amount: roundedPaid,
-        },
-      });
-
-      await monthlyTransaction.save();
-    }
+    // Save all updated transactions
+    await Promise.all(transactions.map((tx) => tx.save()));
   }
+}
 
   const result = await investmentParticipant.save();
   return result;
