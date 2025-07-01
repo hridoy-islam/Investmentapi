@@ -27,6 +27,11 @@ const createInvestmentParticipantIntoDB = async (
       throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
     }
 
+    const investor = await User.findById(investorId);
+    if (!investor) {
+      throw new AppError(httpStatus.NOT_FOUND, "Investor not found");
+    }
+
     // ✅ Calculate total invested so far in this project
     const aggregation = await InvestmentParticipant.aggregate([
       {
@@ -90,6 +95,8 @@ const createInvestmentParticipantIntoDB = async (
             metadata: {
               investorId,
               investmentId,
+              investorName: investor.name,
+              investmenName: investment.title,
               amount,
             },
           },
@@ -158,7 +165,8 @@ const updateInvestmentParticipantIntoDB = async (
     throw new AppError(httpStatus.NOT_FOUND, "InvestmentParticipant not found");
   }
 
-  const hasAmount = payload.amount !== undefined && typeof payload.amount === "number";
+  const hasAmount =
+    payload.amount !== undefined && typeof payload.amount === "number";
   const hasAgentCommissionRate = payload.agentCommissionRate !== undefined;
 
   // Round payload.amount if present
@@ -168,7 +176,9 @@ const updateInvestmentParticipantIntoDB = async (
 
   // Guard: Check if adding amount would exceed project's amountRequired
   if (hasAmount) {
-    const investment = await Investment.findById(investmentParticipant.investmentId);
+    const investment = await Investment.findById(
+      investmentParticipant.investmentId
+    );
     if (!investment) {
       throw new AppError(httpStatus.NOT_FOUND, "Investment not found");
     }
@@ -197,46 +207,48 @@ const updateInvestmentParticipantIntoDB = async (
   const previousAmount = investmentParticipant.amount;
 
   // Update investment participant amounts
-if (hasAmount) {
-  investmentParticipant.amount = Math.round((investmentParticipant.amount + payload.amount!) * 100) / 100;
-  investmentParticipant.totalDue = Math.round((investmentParticipant.totalDue + payload.amount!) * 100) / 100;
-}
-
+  if (hasAmount) {
+    investmentParticipant.amount =
+      Math.round((investmentParticipant.amount + payload.amount!) * 100) / 100;
+    investmentParticipant.totalDue =
+      Math.round((investmentParticipant.totalDue + payload.amount!) * 100) /
+      100;
+  }
 
   // Round participant values
-  investmentParticipant.amount = Math.round(investmentParticipant.amount * 100) / 100;
-  investmentParticipant.totalDue = Math.round(investmentParticipant.totalDue * 100) / 100;
+  investmentParticipant.amount =
+    Math.round(investmentParticipant.amount * 100) / 100;
+  investmentParticipant.totalDue =
+    Math.round(investmentParticipant.totalDue * 100) / 100;
 
   // Update paymentLog if amount changed
-if (hasAmount) {
-  const updatedAmount = investmentParticipant.amount;
+  if (hasAmount) {
+    const updatedAmount = investmentParticipant.amount;
 
-  // Fetch investor separately
-  const investor = await User.findById(investmentParticipant.investorId);
-  const investorName = investor ? investor.name : 'Investor';
+    // Fetch investor separately
+    const investor = await User.findById(investmentParticipant.investorId);
+    const investorName = investor ? investor.name : "Investor";
 
-  const monthlyTransaction = await Transaction.findOne({
-    investmentId: investmentParticipant.investmentId,
-    investorId: investmentParticipant.investorId,
-  });
-
-  if (monthlyTransaction) {
-    monthlyTransaction.paymentLog.push({
-      transactionType: "investment",
-      dueAmount: 0,
-      paidAmount: 0,
-      status: "partial",
-      note: `${investorName} made an additional investment in the project`,
-      metadata: { amount: payload.amount }
+    const monthlyTransaction = await Transaction.findOne({
+      investmentId: investmentParticipant.investmentId,
+      investorId: investmentParticipant.investorId,
     });
 
-    monthlyTransaction.status = "partial";
+    if (monthlyTransaction) {
+      monthlyTransaction.paymentLog.push({
+        transactionType: "investment",
+        dueAmount: 0,
+        paidAmount: 0,
+        status: "partial",
+        note: `${investorName} made an additional investment in the project`,
+        metadata: { amount: payload.amount },
+      });
 
-    await monthlyTransaction.save();
+      monthlyTransaction.status = "partial";
+
+      await monthlyTransaction.save();
+    }
   }
-}
-
-
 
   // Apply other payload updates
   for (const key in payload) {
@@ -284,7 +296,7 @@ if (hasAmount) {
         metadata: {
           investmentId,
           investorId,
-          amount:roundedPaid
+          amount: roundedPaid,
         },
       });
 
